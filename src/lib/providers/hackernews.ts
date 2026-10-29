@@ -10,7 +10,7 @@ const API = "https://hn.algolia.com/api/v1/search_by_date";
 export function nameFromLaunchTitle(title: string, domain: string): string {
   const t = title.replace(/^(show|launch) hn:\s*/i, "");
   const m = t.match(/^([^–—:|,-]{2,60}?)\s*[–—:|,-]\s+/);
-  return cleanName(m ? m[1] : domain);
+  return cleanName(m ? m[1] : t.length <= 40 && t.trim() ? t : domain);
 }
 
 export function mapHits(hits: Hit[]): { records: DiscoveredRecord[]; unattributed: DiscoveredUnattributedSignal[] } {
