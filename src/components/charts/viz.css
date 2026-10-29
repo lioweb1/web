@@ -1,0 +1,26 @@
+/* Chart palette (validated reference palette from the dataviz method). Light and dark are
+   selected steps of the same ramps, not an automatic flip. */
+.viz {
+  --series-1: #2a78d6;
+  --status-good: #0ca30c;
+  --status-critical: #d03b3b;
+  --neutral-mark: #898781;
+  --ord-1: #86b6ef;
+  --ord-2: #5598e7;
+  --ord-3: #2a78d6;
+  --ord-4: #1c5cab;
+  --ord-5: #104281;
+  --grid: #e1e0d9;
+  --axis: #c3c2b7;
+  --ink-muted: #898781;
+}
+.dark .viz {
+  --series-1: #3987e5;
+  --ord-1: #184f95;
+  --ord-2: #256abf;
+  --ord-3: #3987e5;
+  --ord-4: #6da7ec;
+  --ord-5: #9ec5f4;
+  --grid: #2c2c2a;
+  --axis: #383835;
+}
