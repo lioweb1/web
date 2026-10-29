@@ -2,21 +2,8 @@ import { and, asc, desc, eq, inArray, isNull, isNotNull, sql, type SQL } from "d
 import { schema, withTenant, type Tx } from "@/lib/db";
 import { assertCountBelow } from "@/lib/plans";
 
-export const LEAD_STATUSES = [
-  ["new", "New"],
-  ["reviewed", "Reviewed"],
-  ["qualified", "Qualified"],
-  ["contacted", "Contacted"],
-  ["follow_up", "Follow-up Required"],
-  ["replied", "Replied"],
-  ["meeting", "Meeting Scheduled"],
-  ["won", "Won"],
-  ["lost", "Lost"],
-  ["not_interested", "Not Interested"],
-] as const;
-export type LeadStatus = (typeof LEAD_STATUSES)[number][0];
-export const statusLabel = (s: string) => LEAD_STATUSES.find(([k]) => k === s)?.[1] ?? s;
-export const PRIORITIES = ["low", "medium", "high", "urgent"] as const;
+import { statusLabel, PRIORITIES, type LeadStatus } from "@/lib/lead-constants";
+export { LEAD_STATUSES, statusLabel, PRIORITIES, type LeadStatus } from "@/lib/lead-constants";
 
 const L = schema.leads;
 const B = schema.businesses;
