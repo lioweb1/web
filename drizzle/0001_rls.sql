@@ -7,6 +7,8 @@ DO $$ BEGIN
   END IF;
 END $$;
 --> statement-breakpoint
+GRANT USAGE ON SCHEMA public TO leadorbit_tenant;
+--> statement-breakpoint
 CREATE OR REPLACE FUNCTION app_current_workspace() RETURNS uuid
   LANGUAGE sql STABLE AS $$ SELECT nullif(current_setting('app.workspace_id', true), '')::uuid $$;
 --> statement-breakpoint
@@ -16,7 +18,7 @@ BEGIN
   FOREACH t IN ARRAY ARRAY[
     'target_markets','leads','tags','lead_tags','lead_lists','lead_list_items','notes','activities',
     'tasks','integrations','monitoring_rules','notifications','notification_prefs','webhooks',
-    'saved_searches','search_history','exports','usage_records','audit_logs'
+    'saved_searches','search_history','exports','usage_records','audit_logs','business_signals'
   ] LOOP
     EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', t);
     EXECUTE format('CREATE POLICY tenant_isolation ON %I USING (workspace_id = app_current_workspace()) WITH CHECK (workspace_id = app_current_workspace())', t);
@@ -36,7 +38,7 @@ GRANT SELECT, INSERT, UPDATE ON businesses TO leadorbit_tenant;
 DO $$
 DECLARE t text;
 BEGIN
-  FOREACH t IN ARRAY ARRAY['contacts','source_observations','website_analyses','business_signals','domains'] LOOP
+  FOREACH t IN ARRAY ARRAY['contacts','source_observations','website_analyses','domains'] LOOP
     EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', t);
     EXECUTE format('CREATE POLICY via_business ON %I USING (business_id IS NULL OR business_id IN (SELECT id FROM businesses)) WITH CHECK (business_id IS NULL OR business_id IN (SELECT id FROM businesses))', t);
     EXECUTE format('GRANT SELECT, INSERT, UPDATE ON %I TO leadorbit_tenant', t);

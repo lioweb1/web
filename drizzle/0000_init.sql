@@ -32,6 +32,7 @@ CREATE TABLE "audit_logs" (
 --> statement-breakpoint
 CREATE TABLE "business_signals" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"workspace_id" uuid NOT NULL,
 	"business_id" uuid,
 	"type" "signal_type" NOT NULL,
 	"title" text NOT NULL,
@@ -41,7 +42,8 @@ CREATE TABLE "business_signals" (
 	"external_id" text NOT NULL,
 	"published_at" timestamp with time zone,
 	"discovered_at" timestamp with time zone DEFAULT now() NOT NULL,
-	"matched_keywords" text[] DEFAULT '{}'::text[] NOT NULL
+	"matched_keywords" text[] DEFAULT '{}'::text[] NOT NULL,
+	"dismissed_at" timestamp with time zone
 );
 --> statement-breakpoint
 CREATE TABLE "businesses" (
@@ -415,6 +417,7 @@ CREATE TABLE "workspaces" (
 	"plan" "plan_tier" DEFAULT 'free' NOT NULL,
 	"limit_overrides" jsonb DEFAULT '{}'::jsonb NOT NULL,
 	"default_target_market_id" uuid,
+	"settings" jsonb DEFAULT '{}'::jsonb NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
@@ -424,6 +427,7 @@ ALTER TABLE "activities" ADD CONSTRAINT "activities_lead_id_leads_id_fk" FOREIGN
 ALTER TABLE "activities" ADD CONSTRAINT "activities_actor_id_users_id_fk" FOREIGN KEY ("actor_id") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "audit_logs" ADD CONSTRAINT "audit_logs_workspace_id_workspaces_id_fk" FOREIGN KEY ("workspace_id") REFERENCES "public"."workspaces"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "audit_logs" ADD CONSTRAINT "audit_logs_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "business_signals" ADD CONSTRAINT "business_signals_workspace_id_workspaces_id_fk" FOREIGN KEY ("workspace_id") REFERENCES "public"."workspaces"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "business_signals" ADD CONSTRAINT "business_signals_business_id_businesses_id_fk" FOREIGN KEY ("business_id") REFERENCES "public"."businesses"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "businesses" ADD CONSTRAINT "businesses_owner_workspace_id_workspaces_id_fk" FOREIGN KEY ("owner_workspace_id") REFERENCES "public"."workspaces"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "contacts" ADD CONSTRAINT "contacts_business_id_businesses_id_fk" FOREIGN KEY ("business_id") REFERENCES "public"."businesses"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
@@ -470,7 +474,7 @@ ALTER TABLE "webhooks" ADD CONSTRAINT "webhooks_workspace_id_workspaces_id_fk" F
 ALTER TABLE "website_analyses" ADD CONSTRAINT "website_analyses_business_id_businesses_id_fk" FOREIGN KEY ("business_id") REFERENCES "public"."businesses"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 CREATE INDEX "activities_lead_idx" ON "activities" USING btree ("lead_id","occurred_at");--> statement-breakpoint
 CREATE INDEX "audit_ws_idx" ON "audit_logs" USING btree ("workspace_id","created_at");--> statement-breakpoint
-CREATE UNIQUE INDEX "signals_ext_uq" ON "business_signals" USING btree ("provider_id","external_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "signals_ext_uq" ON "business_signals" USING btree ("workspace_id","provider_id","external_id");--> statement-breakpoint
 CREATE INDEX "signals_business_idx" ON "business_signals" USING btree ("business_id");--> statement-breakpoint
 CREATE INDEX "businesses_domain_idx" ON "businesses" USING btree ("domain");--> statement-breakpoint
 CREATE INDEX "businesses_country_idx" ON "businesses" USING btree ("country_code");--> statement-breakpoint

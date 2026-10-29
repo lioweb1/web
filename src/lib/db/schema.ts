@@ -113,8 +113,18 @@ export const workspaces = pgTable("workspaces", {
   /** Overrides of plan limits, configurable without code changes. */
   limitOverrides: jsonb("limit_overrides").$type<Record<string, number>>().notNull().default({}),
   defaultTargetMarketId: uuid("default_target_market_id"),
+  settings: jsonb("settings").$type<WorkspaceSettings>().notNull().default({}),
   ...timestamps,
 });
+
+export type WorkspaceSettings = {
+  /** Technologies the workspace builds with; used by the technology-compatibility score factor. */
+  preferredTechnologies?: string[];
+  /** Industries the workspace targets; used by the industry-relevance score factor. */
+  targetIndustries?: string[];
+  /** Services the workspace offers (shown in recommendations). */
+  services?: string[];
+};
 
 export const memberships = pgTable(
   "memberships",
@@ -327,6 +337,9 @@ export const businessSignals = pgTable(
   "business_signals",
   {
     id: uuid("id").primaryKey().defaultRandom(),
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
     businessId: uuid("business_id").references(() => businesses.id, { onDelete: "cascade" }),
     type: signalType("type").notNull(),
     title: text("title").notNull(),
@@ -338,8 +351,9 @@ export const businessSignals = pgTable(
     publishedAt: timestamp("published_at", { withTimezone: true }),
     discoveredAt: timestamp("discovered_at", { withTimezone: true }).notNull().defaultNow(),
     matchedKeywords: text("matched_keywords").array().notNull().default(sql`'{}'::text[]`),
+    dismissedAt: timestamp("dismissed_at", { withTimezone: true }),
   },
-  (t) => [uniqueIndex("signals_ext_uq").on(t.providerId, t.externalId), index("signals_business_idx").on(t.businessId)],
+  (t) => [uniqueIndex("signals_ext_uq").on(t.workspaceId, t.providerId, t.externalId), index("signals_business_idx").on(t.businessId)],
 );
 
 /* ------------------------------------------------------------------ */

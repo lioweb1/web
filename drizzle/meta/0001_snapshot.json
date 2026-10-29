@@ -1,6 +1,6 @@
 {
-  "id": "1326c023-a675-4b51-9dfd-f7a9f367c4af",
-  "prevId": "2f5bfb85-8186-4105-9a31-ec7c1e16dde7",
+  "id": "722b79dc-2b3b-4634-9f2d-318f257b9201",
+  "prevId": "d9424a38-8aaa-4541-92db-e2f320f5a88d",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -260,6 +260,12 @@
           "notNull": true,
           "default": "gen_random_uuid()"
         },
+        "workspace_id": {
+          "name": "workspace_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
         "business_id": {
           "name": "business_id",
           "type": "uuid",
@@ -322,12 +328,24 @@
           "primaryKey": false,
           "notNull": true,
           "default": "'{}'::text[]"
+        },
+        "dismissed_at": {
+          "name": "dismissed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
         }
       },
       "indexes": {
         "signals_ext_uq": {
           "name": "signals_ext_uq",
           "columns": [
+            {
+              "expression": "workspace_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
             {
               "expression": "provider_id",
               "isExpression": false,
@@ -363,6 +381,19 @@
         }
       },
       "foreignKeys": {
+        "business_signals_workspace_id_workspaces_id_fk": {
+          "name": "business_signals_workspace_id_workspaces_id_fk",
+          "tableFrom": "business_signals",
+          "columnsFrom": [
+            "workspace_id"
+          ],
+          "tableTo": "workspaces",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        },
         "business_signals_business_id_businesses_id_fk": {
           "name": "business_signals_business_id_businesses_id_fk",
           "tableFrom": "business_signals",
@@ -3751,6 +3782,13 @@
           "type": "uuid",
           "primaryKey": false,
           "notNull": false
+        },
+        "settings": {
+          "name": "settings",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
         },
         "created_at": {
           "name": "created_at",
