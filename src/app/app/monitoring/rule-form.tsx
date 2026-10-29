@@ -67,7 +67,7 @@ export function RuleForm({ values, providers, categories, lists }: { values: Rul
         <CardHeader title="Targeting criteria" description="Records with unknown values (e.g. no country) are kept and scored lower rather than dropped." />
         <CardBody className="grid gap-4 md:grid-cols-2">
           <Field label={osm ? "Country (OpenStreetMap needs exactly one)" : "Target countries"}>
-            <CountrySelector name="countries" defaultValue={values.countries} />
+            <CountrySelector key={osm ? "single" : "multi"} name="countries" single={osm} defaultValue={osm ? values.countries.slice(0, 1) : values.countries} />
           </Field>
           <Field label="Cities" htmlFor="cities" hint={osm ? "Required for OpenStreetMap. Comma-separated, up to 5." : "Comma-separated."}>
             <Input id="cities" name="cities" defaultValue={values.cities.join(", ")} />

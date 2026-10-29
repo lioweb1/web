@@ -35,7 +35,7 @@ export default function HelpPage() {
   return (
     <>
       <PageHeader title="Help & documentation" description="How LeadOrbit finds, qualifies and organizes leads — and what it deliberately doesn’t do." />
-      <div className="grid gap-6 lg:grid-cols-[14rem_1fr]">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[14rem_minmax(0,1fr)] [&>*]:min-w-0">
         <nav aria-label="Help sections" className="lg:sticky lg:top-20 lg:self-start">
           <ul className="space-y-1 text-sm">
             {SECTIONS.map(([id, label]) => (
@@ -168,7 +168,7 @@ if (!crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(req.headers["x-le
           </Section>
 
           <Section id="privacy" title="Privacy & opt-out requests">
-            <p>LeadOrbit collects only business information that sources publish for business purposes. When a business asks to be removed, use “Suppress business data” on its lead: contacts are deleted and future collection is blocked. Admins can export all workspace data as JSON and owners can delete a workspace under Settings → Privacy & data. Review the privacy policy and terms templates with a lawyer before offering LeadOrbit to others.</p>
+            <p>LeadOrbit collects only business information that sources publish for business purposes. When a business asks to be removed, use “Suppress contact data” on its lead: contacts are deleted and future collection is blocked. Admins can export all workspace data as JSON and owners can delete a workspace under Settings → Privacy & data. Review the privacy policy and terms templates with a lawyer before offering LeadOrbit to others.</p>
           </Section>
 
           <Section id="shortcuts" title="Keyboard shortcuts">

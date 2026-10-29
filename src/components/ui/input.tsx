@@ -19,7 +19,7 @@ export const Select = forwardRef<HTMLSelectElement, React.SelectHTMLAttributes<H
 Select.displayName = "Select";
 
 export function Label({ className, ...p }: React.LabelHTMLAttributes<HTMLLabelElement>) {
-  return <label className={cn("text-sm font-medium text-fg", className)} {...p} />;
+  return <label className={cn("block text-sm font-medium text-fg", className)} {...p} />;
 }
 
 export function Field({ label, hint, error, htmlFor, children, className }: { label: string; hint?: React.ReactNode; error?: string; htmlFor?: string; children: React.ReactNode; className?: string }) {

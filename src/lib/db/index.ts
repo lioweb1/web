@@ -18,7 +18,27 @@ function createPools(): Pools {
   }
   const system = new pg.Pool({ connectionString: ownerUrl, max: 5 });
   const tenant = new pg.Pool({ connectionString: appUrl, max: 10 });
+  system.on("connect", serializeQueries);
+  tenant.on("connect", serializeQueries);
   return { system, tenant, systemDb: drizzle(system, { schema }), tenantDb: drizzle(tenant, { schema }) };
+}
+
+/**
+ * Queue promise-style queries per connection. Code inside one transaction may issue
+ * queries with Promise.all; pg is deprecating concurrent client.query() calls, so they
+ * are chained here instead (same ordering pg used internally).
+ */
+function serializeQueries(client: pg.PoolClient) {
+  const original = client.query.bind(client) as (...args: unknown[]) => unknown;
+  let tail: Promise<unknown> = Promise.resolve();
+  (client as unknown as { query: (...args: unknown[]) => unknown }).query = (...args: unknown[]) => {
+    const last = args[args.length - 1];
+    const isSubmittable = typeof (args[0] as { submit?: unknown })?.submit === "function";
+    if (typeof last === "function" || isSubmittable) return original(...args);
+    const run = tail.then(() => original(...args) as Promise<unknown>);
+    tail = run.catch(() => undefined);
+    return run;
+  };
 }
 
 function pools(): Pools {

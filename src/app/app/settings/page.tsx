@@ -187,10 +187,7 @@ async function MembersTab() {
                     <div className="flex flex-wrap items-start justify-end gap-2">
                       <ActionForm action={setRoleAction} inline submitLabel="Update" submitVariant="secondary">
                         <input type="hidden" name="userId" value={m.userId} />
-                        <label className="sr-only" htmlFor={`role-${m.userId}`}>
-                          Role for {m.name}
-                        </label>
-                        <Select id={`role-${m.userId}`} name="role" defaultValue={m.role} className="h-8 w-28 text-xs">
+                        <Select id={`role-${m.userId}`} aria-label={`Role for ${m.name}`} name="role" defaultValue={m.role} className="h-8 w-28 text-xs">
                           {hasRole(ctx, "owner") ? <option value="owner">Owner</option> : null}
                           <option value="admin">Admin</option>
                           <option value="member">Member</option>
@@ -414,7 +411,7 @@ async function PrivacyTab() {
         </CardBody>
       </Card>
       <Card>
-        <CardHeader title="Opt-out & erasure requests" description="When a business asks to be removed, open its lead and use “Suppress business data”, which deletes its contacts and blocks future collection." />
+        <CardHeader title="Opt-out & erasure requests" description="When a business asks to be removed, open its lead and use “Suppress contact data”, which deletes its contacts and blocks future collection." />
         <CardBody className="text-sm text-muted">
           Record the request date and outcome in a lead note for your records. See the{" "}
           <a href="/privacy" className="text-accent hover:underline">

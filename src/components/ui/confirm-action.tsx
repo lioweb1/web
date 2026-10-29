@@ -61,7 +61,6 @@ export function ConfirmAction({
           </div>
         </form>
       </Dialog>
-      {state?.message && !open ? <span className="sr-only" role="status">{state.message}</span> : null}
     </>
   );
 }
