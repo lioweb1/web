@@ -128,6 +128,11 @@ export async function upsertBusiness(tx: Tx, rec: DiscoveredRecord, providerId: 
 }
 
 export async function upsertDomain(tx: Tx, domain: string, providerId: string, sourceRef: string | null, businessId: string | null, observedAt: Date | null) {
+  // Domain rows are shared; never link them to a workspace-private business (would leak or break RLS for others).
+  if (businessId) {
+    const [b] = await tx.select({ owner: schema.businesses.ownerWorkspaceId }).from(schema.businesses).where(eq(schema.businesses.id, businessId));
+    if (!b || b.owner) businessId = null;
+  }
   const [row] = await tx
     .insert(schema.domains)
     .values({ domain, tld: tldOf(domain), businessId, discoveryProvider: providerId, sourceRef, firstDiscoveredAt: observedAt ?? new Date() })

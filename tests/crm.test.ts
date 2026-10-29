@@ -93,7 +93,7 @@ describe("CRM: export", () => {
     expect(out.csv.startsWith("﻿Business name;Email\r\n")).toBe(true);
     expect(out.csv).toContain("Acme Plumbing;info@acmeplumbing.co.uk");
     const all = await buildExport(ws, u.user.id, {}, { fields: ["name"], contact: "any", format: "csv" });
-    expect(all.csv).toContain(`'=HYPERLINK(""http://evil"")`.replace(`""http://evil""`, `""http://evil""`).slice(0, 2));
+    expect(all.csv).toContain(`"'=HYPERLINK(""http://evil"")"`);
     expect(all.csv).not.toMatch(/\n=HYPERLINK/);
     const withEmail = await buildExport(ws, u.user.id, {}, { fields: ["name"], contact: "email", format: "csv" });
     expect(withEmail.rowCount).toBe(2);

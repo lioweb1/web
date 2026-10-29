@@ -147,8 +147,8 @@ async function MembersTab() {
               <Field label="Email" htmlFor="m-email" className="min-w-64 flex-1">
                 <Input id="m-email" name="email" type="email" required />
               </Field>
-              <Field label="Role" htmlFor="m-role">
-                <Select id="m-role" name="role" defaultValue="member" className="w-36">
+              <Field label="Role" htmlFor="m-role" className="w-36">
+                <Select id="m-role" name="role" defaultValue="member">
                   <option value="viewer">Viewer</option>
                   <option value="member">Member</option>
                   <option value="admin">Admin</option>

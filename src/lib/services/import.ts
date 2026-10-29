@@ -7,6 +7,7 @@ import { findDuplicate } from "@/lib/discovery/pipeline";
 import { cleanName, normalizeCountry, normalizeEmail, normalizeName, normalizePhone, normalizeUrl, registrableDomain } from "@/lib/discovery/normalize";
 import { createLead, ensureTag } from "./leads";
 import { enqueue } from "@/lib/jobs/queue";
+import { computeScore } from "./enrich";
 import { LimitExceededError } from "@/lib/plans";
 
 export const IMPORT_FIELDS = [
@@ -141,6 +142,11 @@ export async function importLeads(workspaceId: string, actorId: string, text: st
           throw e;
         }
         result.created++;
+        const score = await computeScore(tx, workspaceId, business.id);
+        await tx
+          .update(schema.leads)
+          .set({ score: score.score, scoreFactors: score.factors, scoreConfidence: score.confidence, scoreMissing: score.missing, scoreNextStep: score.nextStep, scoredAt: new Date() })
+          .where(eq(schema.leads.id, lead.id));
         const rowTags = get(r, "tags")
           .split(/[;,]/)
           .map((t) => t.trim())

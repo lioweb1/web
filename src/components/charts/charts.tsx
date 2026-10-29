@@ -98,7 +98,7 @@ export function TrendLine({ data, valueLabel = "Leads discovered" }: { data: { d
           <XAxis dataKey="date" tick={axisTick} tickLine={false} axisLine={{ stroke: "var(--axis)" }} minTickGap={32} tickFormatter={(d: string) => d.slice(5)} />
           <YAxis allowDecimals={false} tick={axisTick} tickLine={false} axisLine={false} />
           <Tooltip {...tooltipStyle} cursor={{ stroke: "var(--axis)" }} formatter={(v) => [Number(v).toLocaleString(), valueLabel]} />
-          <Line type="monotone" dataKey="value" stroke="var(--series-1)" strokeWidth={2} dot={false} activeDot={{ r: 4, stroke: "var(--surface)", strokeWidth: 2 }} isAnimationActive={false} />
+          <Line type="linear" dataKey="value" stroke="var(--series-1)" strokeWidth={2} dot={false} activeDot={{ r: 4, stroke: "var(--surface)", strokeWidth: 2 }} isAnimationActive={false} />
         </LineChart>
       </ResponsiveContainer>
     </ChartFrame>

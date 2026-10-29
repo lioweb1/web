@@ -10,6 +10,8 @@ const securityHeaders = [
 const config: NextConfig = {
   serverExternalPackages: ["pg", "nodemailer"],
   poweredByHeader: false,
+  // CSV imports are submitted through a server action (max 5 MB file).
+  experimental: { serverActions: { bodySizeLimit: "6mb" } },
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
   },
