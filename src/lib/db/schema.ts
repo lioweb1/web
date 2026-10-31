@@ -12,6 +12,7 @@ import {
   uniqueIndex,
   index,
   primaryKey,
+  bigint,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 
@@ -756,6 +757,24 @@ export type SocialAutopilotConfig = {
   maxPostsPerDay: number;
   /** Max drafts generated per scan. */
   draftsPerScan: number;
+  /** "slots" publishes at the next posting time; "immediate" publishes right away. */
+  scheduleMode: "slots" | "immediate";
+  /** Local posting times, "HH:MM". */
+  postingTimes: string[];
+  /** IANA time zone for posting times, e.g. "Asia/Dhaka". */
+  timezone: string;
+  /** Comment replies: off, drafted for approval, or sent automatically. */
+  autoReply: "off" | "approve" | "auto";
+  maxRepliesPerDay: number;
+  /** Give each platform a different hook variant (A/B test). */
+  rotateHooks: boolean;
+  /** Post a multi-part thread on Bluesky and Threads. */
+  threadMode: boolean;
+  /** Generate a branded image card when a post has no image. */
+  autoImage: boolean;
+  brandColor: string;
+  /** Add utm_source/medium/campaign to the link. */
+  utm: boolean;
 };
 
 export const socialAutopilots = pgTable("social_autopilots", {
@@ -769,10 +788,27 @@ export const socialAutopilots = pgTable("social_autopilots", {
   lastError: text("last_error"),
   lastRunStats: jsonb("last_run_stats").$type<Record<string, number>>(),
   nextRunAt: timestamp("next_run_at", { withTimezone: true }),
+  engageSyncedAt: timestamp("engage_synced_at", { withTimezone: true }),
+  metricsSyncedAt: timestamp("metrics_synced_at", { withTimezone: true }),
+  /** Telegram getUpdates offset for draft approvals. */
+  telegramOffset: bigint("telegram_offset", { mode: "number" }),
   ...timestamps,
 });
 
-export type SocialPublishResult = { ok: boolean; url?: string | null; id?: string | null; error?: string | null; at: string };
+export type SocialMetrics = { likes: number; comments: number; shares: number; views?: number | null };
+
+export type SocialPublishResult = {
+  ok: boolean;
+  url?: string | null;
+  id?: string | null;
+  /** Content id some platforms need for replies (Bluesky cid). */
+  cid?: string | null;
+  error?: string | null;
+  at: string;
+  /** Which hook variant was used on this platform. */
+  hookIndex?: number;
+  metrics?: SocialMetrics | null;
+};
 
 export const socialPosts = pgTable(
   "social_posts",
@@ -790,6 +826,19 @@ export const socialPosts = pgTable(
     body: text("body").notNull(),
     /** Short version for character-limited platforms (Bluesky, Threads, Mastodon). */
     shortBody: text("short_body").notNull(),
+    /** Alternative hooks for A/B tests; `hook` is the chosen one. */
+    hookVariants: text("hook_variants").array().notNull().default(sql`'{}'::text[]`),
+    /** Platform-specific versions (linkedin, instagram) written in that platform's style. */
+    platformTexts: jsonb("platform_texts").$type<Record<string, string>>().notNull().default({}),
+    /** Follow-up parts for thread mode on Bluesky/Threads. */
+    thread: text("thread").array().notNull().default(sql`'{}'::text[]`),
+    primaryKeyword: text("primary_keyword"),
+    altText: text("alt_text"),
+    autoImage: boolean("auto_image").notNull().default(true),
+    scheduledAt: timestamp("scheduled_at", { withTimezone: true }),
+    metricsUpdatedAt: timestamp("metrics_updated_at", { withTimezone: true }),
+    /** Telegram message carrying the approval buttons. */
+    approvalMessageId: bigint("approval_message_id", { mode: "number" }),
     engagementComment: text("engagement_comment"),
     hashtags: text("hashtags").array().notNull().default(sql`'{}'::text[]`),
     imageUrl: text("image_url"),
@@ -805,4 +854,35 @@ export const socialPosts = pgTable(
     index("social_posts_ws_idx").on(t.workspaceId, t.createdAt),
     uniqueIndex("social_posts_source_uq").on(t.workspaceId, t.sourceExternalId).where(sql`${t.sourceExternalId} is not null`),
   ],
+);
+
+export const socialComments = pgTable(
+  "social_comments",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    postId: uuid("post_id")
+      .notNull()
+      .references(() => socialPosts.id, { onDelete: "cascade" }),
+    platform: text("platform").notNull(),
+    externalId: text("external_id").notNull(),
+    /** Bluesky cid of the comment (needed to reply). */
+    externalCid: text("external_cid"),
+    authorHandle: text("author_handle"),
+    authorName: text("author_name"),
+    text: text("text").notNull(),
+    url: text("url"),
+    commentedAt: timestamp("commented_at", { withTimezone: true }),
+    replyText: text("reply_text"),
+    /** new | drafted | queued | replied | ignored | failed */
+    status: text("status").notNull().default("new"),
+    replyId: text("reply_id"),
+    repliedAt: timestamp("replied_at", { withTimezone: true }),
+    error: text("error"),
+    approvalMessageId: bigint("approval_message_id", { mode: "number" }),
+    ...timestamps,
+  },
+  (t) => [uniqueIndex("social_comments_ext_uq").on(t.workspaceId, t.platform, t.externalId), index("social_comments_ws_idx").on(t.workspaceId, t.status, t.createdAt)],
 );

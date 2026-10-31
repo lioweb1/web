@@ -120,11 +120,14 @@ export const SOCIAL_PLATFORMS: SocialConnectionDef[] = [
     id: "telegram",
     kind: "platform",
     name: "Telegram channel",
-    description: "Posts to a channel through a bot you create with @BotFather. Add the bot to the channel as an admin.",
+    description: "Posts to a channel through a bot you create with @BotFather (add the bot to the channel as an admin). The same bot can send you every draft and reply with Approve / Publish now / Reject buttons, so you can run the autopilot from your phone.",
     pricingNote: "Free (Telegram Bot API).",
     docsUrl: "https://core.telegram.org/bots/api#sendmessage",
     secretFields: [{ key: "botToken", label: "Bot token", type: "secret", required: true }],
-    settingFields: [{ key: "chatId", label: "Channel", type: "text", required: true, help: "@channelname or numeric chat id" }],
+    settingFields: [
+      { key: "chatId", label: "Channel to post to", type: "text", help: "@channelname or numeric chat id. Leave blank to use the bot for approvals only." },
+      { key: "approverChatId", label: "Your chat ID for approvals", type: "text", help: "Send /start to your bot, then get your numeric ID from @userinfobot. Only this chat can approve." },
+    ],
   },
   {
     id: "discord",

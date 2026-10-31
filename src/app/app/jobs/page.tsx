@@ -27,6 +27,8 @@ const TYPES: Record<string, string> = {
   push_crm: "Send to CRM",
   social_scan: "Social autopilot scan",
   social_publish: "Publish social post",
+  social_engage: "Social comments & metrics",
+  social_telegram_poll: "Telegram approvals",
 };
 const STATUSES = ["queued", "running", "succeeded", "failed", "dead", "cancelled"] as const;
 const TONE = { queued: "info", running: "accent", succeeded: "success", failed: "danger", dead: "danger", cancelled: "neutral" } as const;

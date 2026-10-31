@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { ExternalLink } from "lucide-react";
 import { requireAuth, hasRole } from "@/lib/auth/session";
 import { AI_PROVIDERS, SOCIAL_PLATFORMS, listConnections, type SocialConnectionDef } from "@/lib/social/accounts";
@@ -6,10 +5,10 @@ import { getAutopilot } from "@/lib/social/service";
 import { TREND_SOURCES } from "@/lib/social/trends";
 import { Card, CardBody, CardHeader, PageHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Notice } from "@/components/ui/states";
 import { fmtDate } from "@/components/ui/misc";
 import { AutopilotForm, ConnectionForm } from "../forms";
+import { SocialNav } from "../nav";
 
 export const metadata = { title: "Social autopilot settings" };
 
@@ -29,12 +28,8 @@ export default async function SocialSettingsPage() {
       <PageHeader
         title="Social autopilot settings"
         description="Everything here is free: trends come from public feeds and APIs, posts are written by a free-tier AI, and publishing uses each platform's official API."
-        actions={
-          <Button asChild>
-            <Link href="/app/social">Back to posts</Link>
-          </Button>
-        }
       />
+      <SocialNav active="settings" />
       <Card className="mb-6">
         <CardHeader title="Autopilot" description="What to look for, how to write, and where to post." />
         <CardBody>
@@ -53,6 +48,12 @@ export default async function SocialSettingsPage() {
       <Notice className="mb-4">
         Keys and tokens are encrypted at rest and never sent to the browser. Posts are original AI rewrites of a trend&apos;s topic; they never copy or impersonate the original author. Keep the daily limit modest so platforms do not flag your accounts as spam.
       </Notice>
+
+      {ap.config.autoImage && /localhost|127\.0\.0\.1/.test(process.env.APP_URL ?? "localhost") ? (
+        <Notice tone="warning" className="mb-4">
+          Branded image cards are served from APP_URL, which is not public right now ({process.env.APP_URL ?? "not set"}). Facebook, Instagram and Threads can only fetch them once the app runs on a public domain.
+        </Notice>
+      ) : null}
 
       <h2 className="mb-3 text-base font-semibold">AI writer</h2>
       <div className="mb-8 grid gap-4 xl:grid-cols-2">

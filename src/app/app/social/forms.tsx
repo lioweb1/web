@@ -6,7 +6,7 @@ import { SubmitButton, FormMessage } from "@/components/ui/form";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import type { SocialAutopilotConfig } from "@/lib/db/schema";
-import { generateAction, saveAutopilotAction, saveConnectionAction, testConnectionAction, updatePostAction } from "./actions";
+import { generateAction, reschedulePostAction, saveAutopilotAction, saveConnectionAction, sendReplyAction, testConnectionAction, updatePostAction } from "./actions";
 
 type FieldView = { key: string; label: string; type: "secret" | "text" | "textarea" | "checkbox"; help?: string; required?: boolean };
 type Option = { id: string; name: string; note?: string; status?: string };
@@ -74,7 +74,7 @@ export function AutopilotForm({ active, intervalMinutes, config, sources, platfo
           <Field label="Brand name" htmlFor="brandName">
             <Input id="brandName" name="brandName" defaultValue={config.brandName} placeholder="LeadOrbit AI" />
           </Field>
-          <Field label="Your link (call to action)" htmlFor="link" hint="Replaces 👉 [Link] in every post.">
+          <Field label="Your link (call to action)" htmlFor="link" hint="Replaces 👉 [Link] in every post. UTM tags are added per platform if enabled.">
             <Input id="link" name="link" type="url" defaultValue={config.link} placeholder="https://example.com" />
           </Field>
           <Field label="Post language" htmlFor="language">
@@ -158,6 +158,52 @@ export function AutopilotForm({ active, intervalMinutes, config, sources, platfo
             <Input id="maxPostsPerDay" name="maxPostsPerDay" type="number" min={1} max={20} defaultValue={config.maxPostsPerDay} />
           </Field>
         </div>
+        <fieldset className="space-y-3 rounded-md border border-border p-4">
+          <legend className="px-1 text-sm font-medium">Scheduling</legend>
+          <div className="grid gap-4 md:grid-cols-3">
+            <Field label="When approved" htmlFor="scheduleMode">
+              <Select id="scheduleMode" name="scheduleMode" defaultValue={config.scheduleMode}>
+                <option value="slots">Publish at the next posting time</option>
+                <option value="immediate">Publish immediately</option>
+              </Select>
+            </Field>
+            <Field label="Posting times" htmlFor="postingTimes" hint="24h clock, comma-separated. Posts are spread across these slots.">
+              <Input id="postingTimes" name="postingTimes" defaultValue={config.postingTimes.join(", ")} placeholder="09:00, 13:00, 20:00" />
+            </Field>
+            <Field label="Time zone" htmlFor="timezone">
+              <Input id="timezone" name="timezone" defaultValue={config.timezone} placeholder="Asia/Dhaka" />
+            </Field>
+          </div>
+        </fieldset>
+
+        <fieldset className="space-y-3 rounded-md border border-border p-4">
+          <legend className="px-1 text-sm font-medium">Comments & replies</legend>
+          <div className="grid gap-4 md:grid-cols-2">
+            <Field label="Auto-reply to comments" htmlFor="autoReply" hint="Facebook, Instagram, Threads, Bluesky and Mastodon.">
+              <Select id="autoReply" name="autoReply" defaultValue={config.autoReply}>
+                <option value="approve">AI drafts replies, I approve</option>
+                <option value="auto">AI replies automatically</option>
+                <option value="off">Off (collect comments only)</option>
+              </Select>
+            </Field>
+            <Field label="Max auto replies / 24h" htmlFor="maxRepliesPerDay">
+              <Input id="maxRepliesPerDay" name="maxRepliesPerDay" type="number" min={1} max={200} defaultValue={config.maxRepliesPerDay} />
+            </Field>
+          </div>
+        </fieldset>
+
+        <fieldset className="space-y-3 rounded-md border border-border p-4">
+          <legend className="px-1 text-sm font-medium">Growth & SEO</legend>
+          <div className="grid gap-2 sm:grid-cols-2">
+            <Checkbox name="rotateHooks" defaultChecked={config.rotateHooks} label="A/B test hooks: each platform gets a different hook" />
+            <Checkbox name="threadMode" defaultChecked={config.threadMode} label="Post as a thread on Bluesky, Threads and Mastodon" />
+            <Checkbox name="autoImage" defaultChecked={config.autoImage} label="Generate a branded image card for every post" />
+            <Checkbox name="utm" defaultChecked={config.utm} label="Add UTM tags to my link (track clicks per platform)" />
+          </div>
+          <Field label="Brand colour (image cards)" htmlFor="brandColor" className="max-w-xs">
+            <Input id="brandColor" name="brandColor" type="color" defaultValue={config.brandColor} className="h-9 w-20 p-1" />
+          </Field>
+        </fieldset>
         {mode === "auto" ? <p className="rounded-md bg-warning-soft px-3 py-2 text-xs text-warning">Fully automatic posts go out without review. Start with approval mode until you like the AI&apos;s output, and keep the daily limit low.</p> : null}
       </fieldset>
       <FormMessage state={state} />
@@ -200,15 +246,31 @@ export function GenerateForm({ platforms, defaultPlatforms }: { platforms: Optio
   );
 }
 
-export type EditablePost = { id: string; hook: string; body: string; shortBody: string; engagementComment: string | null; hashtags: string[]; imageUrl: string | null; platforms: string[] };
+export type EditablePost = {
+  id: string;
+  hook: string;
+  hookVariants: string[];
+  body: string;
+  shortBody: string;
+  platformTexts: Record<string, string>;
+  thread: string[];
+  engagementComment: string | null;
+  hashtags: string[];
+  primaryKeyword: string | null;
+  altText: string | null;
+  imageUrl: string | null;
+  autoImage: boolean;
+  platforms: string[];
+};
 
 export function EditPostDialog({ post, platforms }: { post: EditablePost; platforms: Option[] }) {
   const [state, act] = useActionState(updatePostAction, null);
+  const f = (k: string) => `${k}-${post.id}`;
   return (
     <Dialog
       wide
       title="Edit post"
-      description="Write {LINK} where your link should appear."
+      description="Write {LINK} where your link should appear. The hook is placed above every text automatically."
       trigger={
         <Button size="sm" variant="ghost">
           Edit
@@ -217,26 +279,49 @@ export function EditPostDialog({ post, platforms }: { post: EditablePost; platfo
     >
       <form action={act} className="space-y-3">
         <input type="hidden" name="postId" value={post.id} />
-        <Field label="Hook" htmlFor={`hook-${post.id}`}>
-          <Input id={`hook-${post.id}`} name="hook" defaultValue={post.hook} maxLength={300} />
+        <Field label="Hook (headline)" htmlFor={f("hook")}>
+          <Input id={f("hook")} name="hook" defaultValue={post.hook} maxLength={300} />
         </Field>
-        <Field label="Full post (Facebook, Instagram, LinkedIn, Telegram, Discord)" htmlFor={`body-${post.id}`}>
-          <Textarea id={`body-${post.id}`} name="body" rows={8} defaultValue={post.body} />
-        </Field>
-        <Field label="Short post (Bluesky, Threads, Mastodon)" htmlFor={`short-${post.id}`} hint="Keep under ~240 characters including the link.">
-          <Textarea id={`short-${post.id}`} name="shortBody" rows={3} defaultValue={post.shortBody} maxLength={600} />
-        </Field>
-        <Field label="Engagement comment" htmlFor={`cmt-${post.id}`}>
-          <Textarea id={`cmt-${post.id}`} name="engagementComment" rows={2} defaultValue={post.engagementComment ?? ""} />
+        <Field label="Hook variants for A/B tests" htmlFor={f("variants")} hint="One per line.">
+          <Textarea id={f("variants")} name="hookVariants" rows={3} defaultValue={post.hookVariants.join("\n")} />
         </Field>
         <div className="grid gap-3 md:grid-cols-2">
-          <Field label="Hashtags" htmlFor={`tags-${post.id}`}>
-            <Input id={`tags-${post.id}`} name="hashtags" defaultValue={post.hashtags.join(", ")} />
+          <Field label="SEO keyword" htmlFor={f("kw")}>
+            <Input id={f("kw")} name="primaryKeyword" defaultValue={post.primaryKeyword ?? ""} />
           </Field>
-          <Field label="Image URL" htmlFor={`img-${post.id}`}>
-            <Input id={`img-${post.id}`} name="imageUrl" type="url" defaultValue={post.imageUrl ?? ""} />
+          <Field label="Hashtags" htmlFor={f("tags")}>
+            <Input id={f("tags")} name="hashtags" defaultValue={post.hashtags.join(", ")} />
           </Field>
         </div>
+        <Field label="Main text (Facebook, Telegram, Discord)" htmlFor={f("body")}>
+          <Textarea id={f("body")} name="body" rows={6} defaultValue={post.body} />
+        </Field>
+        <div className="grid gap-3 md:grid-cols-2">
+          <Field label="LinkedIn version" htmlFor={f("li")} hint="Blank = use the main text.">
+            <Textarea id={f("li")} name="linkedin" rows={5} defaultValue={post.platformTexts.linkedin ?? ""} />
+          </Field>
+          <Field label="Instagram caption" htmlFor={f("ig")} hint="Blank = use the main text.">
+            <Textarea id={f("ig")} name="instagram" rows={5} defaultValue={post.platformTexts.instagram ?? ""} />
+          </Field>
+        </div>
+        <Field label="Short text (Bluesky, Threads, Mastodon)" htmlFor={f("short")} hint="Keep under ~170 characters including {LINK}.">
+          <Textarea id={f("short")} name="shortBody" rows={2} defaultValue={post.shortBody} maxLength={600} />
+        </Field>
+        <Field label="Thread follow-ups" htmlFor={f("thread")} hint="Separate parts with a line containing only ---">
+          <Textarea id={f("thread")} name="thread" rows={4} defaultValue={post.thread.join("\n---\n")} />
+        </Field>
+        <Field label="Engagement comment" htmlFor={f("cmt")}>
+          <Textarea id={f("cmt")} name="engagementComment" rows={2} defaultValue={post.engagementComment ?? ""} />
+        </Field>
+        <div className="grid gap-3 md:grid-cols-2">
+          <Field label="Own image URL" htmlFor={f("img")} hint="Overrides the generated card.">
+            <Input id={f("img")} name="imageUrl" type="url" defaultValue={post.imageUrl ?? ""} />
+          </Field>
+          <Field label="Image alt text (SEO + accessibility)" htmlFor={f("alt")}>
+            <Input id={f("alt")} name="altText" defaultValue={post.altText ?? ""} />
+          </Field>
+        </div>
+        <Checkbox name="autoImage" defaultChecked={post.autoImage} label="Use the generated image card when there is no own image" />
         <div className="flex flex-wrap gap-x-4 gap-y-2">
           {platforms.map((p) => (
             <Checkbox key={p.id} name="platforms" value={p.id} defaultChecked={post.platforms.includes(p.id)} label={p.name} />
@@ -248,6 +333,36 @@ export function EditPostDialog({ post, platforms }: { post: EditablePost; platfo
         </SubmitButton>
       </form>
     </Dialog>
+  );
+}
+
+export function RescheduleForm({ postId, value }: { postId: string; value: string }) {
+  const [state, act] = useActionState(reschedulePostAction, null);
+  return (
+    <form action={act} className="flex flex-wrap items-center gap-2">
+      <input type="hidden" name="postId" value={postId} />
+      <Input name="at" type="datetime-local" defaultValue={value} className="h-8 w-full min-w-0 px-2 text-xs" aria-label="New time" />
+      <SubmitButton size="sm" variant="secondary" pendingText="…">
+        Move
+      </SubmitButton>
+      <FormMessage state={state} />
+    </form>
+  );
+}
+
+export function ReplyForm({ commentId, replyText, disabled }: { commentId: string; replyText: string; disabled?: boolean }) {
+  const [state, act] = useActionState(sendReplyAction, null);
+  return (
+    <form action={act} className="space-y-2">
+      <input type="hidden" name="commentId" value={commentId} />
+      <Textarea name="replyText" rows={2} defaultValue={replyText} placeholder="Write a reply…" disabled={disabled} aria-label="Reply" />
+      <FormMessage state={state} />
+      {!disabled ? (
+        <SubmitButton size="sm" variant="primary" pendingText="Sending…">
+          Send reply
+        </SubmitButton>
+      ) : null}
+    </form>
   );
 }
 

@@ -16,6 +16,8 @@ import { ProviderHttpError } from "@/lib/providers/http";
 import { LimitExceededError } from "@/lib/plans";
 import { pushLeadToHubspot } from "@/lib/services/crm";
 import { runScan, publishPost, markPublishGivenUp, SocialConfigError } from "@/lib/social/service";
+import { syncEngagement } from "@/lib/social/engage";
+import { pollTelegram } from "@/lib/social/telegram";
 
 export class PermanentJobError extends Error {}
 
@@ -191,6 +193,17 @@ export const handlers: Record<string, Handler> = {
       if (isPermanent(e) || job.attempts >= job.maxAttempts) await markPublishGivenUp(ws, postId);
       throw e;
     }
+  },
+
+  /** Social autopilot: fetch new comments, draft/send AI replies, refresh post metrics. */
+  async social_engage(job) {
+    const { errorMessages, ...stats } = await syncEngagement(job.workspaceId!);
+    return { ...stats, errors: errorMessages };
+  },
+
+  /** Social autopilot: act on Telegram approval buttons. */
+  async social_telegram_poll(job) {
+    return pollTelegram(job.workspaceId!);
   },
 
   /** Hourly: follow-up reminders for due tasks and lead follow-up dates. */

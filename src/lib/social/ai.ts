@@ -8,40 +8,76 @@ export const LINK_TOKEN = "{LINK}";
 
 export type TrendInput = { title: string; summary?: string | null; url?: string | null; sourceName: string };
 
-export type GeneratedPost = { hook: string; body: string; shortBody: string; engagementComment: string; hashtags: string[] };
+export type GeneratedPost = {
+  primaryKeyword: string;
+  /** Best-scoring hook first. */
+  hooks: string[];
+  /** Post text WITHOUT the hook (the hook is prepended when publishing). */
+  body: string;
+  shortBody: string;
+  platformTexts: { linkedin?: string; instagram?: string };
+  thread: string[];
+  engagementComment: string;
+  hashtags: string[];
+  altText: string;
+};
 
 const generatedSchema = z.object({
-  hook: z.string().trim().min(1).max(300),
+  primaryKeyword: z.string().trim().max(80).default(""),
+  hooks: z.array(z.string().trim().min(1).max(200)).min(1).max(5),
   body: z.string().trim().min(1).max(3000),
   shortBody: z.string().trim().min(1).max(600),
+  linkedin: z.string().trim().max(3000).optional(),
+  instagram: z.string().trim().max(2200).optional(),
+  thread: z.array(z.string().trim().max(500)).max(5).default([]),
   engagementComment: z.string().trim().max(1000).default(""),
-  hashtags: z.array(z.string()).max(10).default([]),
+  hashtags: z.array(z.string()).max(12).default([]),
+  altText: z.string().trim().max(500).default(""),
 });
 
 type Brand = Pick<SocialAutopilotConfig, "brandName" | "brandVoice" | "language" | "keywords" | "link">;
 
-export function systemPrompt(brand: Brand) {
+export function systemPrompt(brand: Brand, opts: { winningHooks?: string[] } = {}) {
   return [
-    "You are a social media growth copywriter for the brand below. You write scroll-stopping, curiosity-driven posts.",
+    "You are an elite viral copywriter and social SEO specialist for the brand below. Your posts stop the scroll, get clicks and rank in platform search.",
     `Brand: ${brand.brandName || "(unnamed)"}`,
     brand.brandVoice ? `About the brand / voice: ${brand.brandVoice}` : "",
-    brand.keywords.length ? `Niche: ${brand.keywords.join(", ")}` : "",
+    brand.keywords.length ? `Niche keywords: ${brand.keywords.join(", ")}` : "",
     `Write in ${brand.language || "English"}.`,
     "",
-    "Rules:",
-    "1. Open with a powerful hook that creates a curiosity gap or FOMO. No boring introductions.",
-    "2. Casual, punchy, emotional tone. Short lines, line breaks and a few well-placed emojis.",
-    `3. End with a call to action that points to the link. Write the literal token ${LINK_TOKEN} where the link goes (e.g. "Check it out 👉 ${LINK_TOKEN}"). Use it exactly once in body and once in shortBody.`,
-    "4. The source item is only inspiration for the TOPIC. Write a completely original post: never copy its sentences, never quote or name its author, never pretend to be them.",
-    "5. Clickbait is fine, lies are not: no invented statistics, fake quotes, fake news, guaranteed income or health claims, and nothing hateful, harassing or sexual.",
-    "6. Mention the brand naturally, only where it genuinely fits the topic.",
+    "HOOKS (the most important part):",
+    "- Write 3 very different hooks, max 100 characters each, using proven formulas: curiosity gap (\"Nobody talks about this…\"), contrarian/negativity (\"Stop doing X\"), specific number/list (\"3 signs your…\"), FOMO/urgency (\"Before everyone else finds out…\"), bold promise, open question, \"I tried X so you don't have to\".",
+    "- Use power words (secret, mistake, finally, actually, nobody, instantly, proven), 1 emoji max, and speak to \"you\".",
+    "- Open a loop the reader can only close by reading on or clicking.",
+    "",
+    "SEO:",
+    "- Choose one primaryKeyword people actually search for in this niche; put it naturally in at least one hook and in the first sentence of every text.",
+    "- Use 1-2 related secondary keywords naturally. No keyword stuffing.",
+    "- Hashtags: 6-8, mixing 2 broad high-volume tags, 3 niche tags and 1-2 long-tail tags. No # sign. No spaces.",
+    "- altText: a descriptive image alt text containing the primaryKeyword.",
+    "",
+    "STYLE:",
+    "- Casual, punchy, emotional. Short lines, line breaks, a few well-placed emojis. Pattern: hook → tension → payoff tease → call to action.",
+    `- End every text with a call to action using the literal token ${LINK_TOKEN} exactly once (e.g. "Full breakdown 👉 ${LINK_TOKEN}").`,
+    "- Texts must NOT repeat the hook; the hook is placed above them automatically.",
+    "",
+    "HARD RULES:",
+    "- The source item is only inspiration for the TOPIC. Write completely original text: never copy its sentences, never quote or name its author, never pretend to be them.",
+    "- Clickbait is fine, lies are not: no invented statistics or quotes, no fake news, no guaranteed income or health claims, nothing hateful, harassing or sexual. The post must deliver on what the hook promises.",
+    "- Mention the brand only where it genuinely fits.",
+    opts.winningHooks?.length ? `\nHooks that performed best with this audience (learn the style, do not copy): ${opts.winningHooks.map((h) => `"${h}"`).join("; ")}` : "",
     "",
     "Return ONLY a JSON object with these keys:",
-    '- "hook": the headline/hook line (max 120 characters)',
-    '- "body": the full post for Facebook/LinkedIn/Telegram (max 1200 characters, starts with the hook)',
-    `- "shortBody": a version for Bluesky/Threads/Mastodon, max 240 characters INCLUDING ${LINK_TOKEN}`,
-    '- "engagementComment": a reply/first comment that asks a question to spark discussion and nudges people to the profile or link',
-    '- "hashtags": 3 to 5 relevant hashtags without the # sign',
+    '- "primaryKeyword": string',
+    '- "hooks": array of 3 strings',
+    '- "body": Facebook/Telegram text, max 900 characters',
+    '- "linkedin": professional, insight-led version for LinkedIn, max 1200 characters, fewer emojis',
+    '- "instagram": emoji-rich caption for Instagram, max 900 characters, short paragraphs',
+    `- "shortBody": max 170 characters INCLUDING ${LINK_TOKEN}, for Bluesky/Threads/Mastodon`,
+    '- "thread": 2 to 4 follow-up posts (max 260 characters each) that deliver the payoff, the last one ending with the CTA',
+    '- "engagementComment": a first comment that asks a question to spark replies and nudges people to the profile or link',
+    '- "hashtags": array of strings',
+    '- "altText": string',
   ]
     .filter((l) => l !== "")
     .join("\n");
@@ -53,28 +89,67 @@ export function userPrompt(t: TrendInput) {
     .join("\n");
 }
 
+const POWER = ["secret", "mistake", "nobody", "never", "stop", "finally", "actually", "truth", "instantly", "proven", "why", "how", "before", "hidden", "warning", "everyone", "this"];
+
+/**
+ * Heuristic 0–100 hook strength: length sweet spot, numbers, power words, curiosity punctuation,
+ * direct address and the SEO keyword. Used to rank variants, not as a promise of reach.
+ */
+export function hookScore(hook: string, keywords: string[] = []) {
+  const h = hook.trim();
+  const lower = h.toLowerCase();
+  const len = Array.from(h).length;
+  let s = 20;
+  if (len >= 30 && len <= 90) s += 20;
+  else if (len < 120) s += 8;
+  else s -= 10;
+  if (/\d/.test(h)) s += 12;
+  s += Math.min(18, POWER.filter((w) => new RegExp(`\\b${w}\\b`).test(lower)).length * 9);
+  if (/[?…]|\.\.\./.test(h)) s += 8;
+  if (/\byou(r)?\b/.test(lower)) s += 10;
+  if (/\p{Extended_Pictographic}/u.test(h)) s += 4;
+  if (keywords.some((k) => k && lower.includes(k.toLowerCase()))) s += 10;
+  if (h === h.toUpperCase() && /[A-Z]{6,}/.test(h)) s -= 15;
+  return Math.max(0, Math.min(100, s));
+}
+
 /** Extract the JSON object from a model reply (tolerates ```json fences and surrounding text). */
-export function parseGenerated(text: string): GeneratedPost {
+function extractJson(text: string): unknown {
   const cleaned = text.replace(/```(?:json)?/gi, "").trim();
   const start = cleaned.indexOf("{");
   const end = cleaned.lastIndexOf("}");
   if (start < 0 || end <= start) throw new ProviderHttpError("AI reply did not contain a JSON object", null, true);
-  let raw: unknown;
   try {
-    raw = JSON.parse(cleaned.slice(start, end + 1));
+    return JSON.parse(cleaned.slice(start, end + 1));
   } catch {
     throw new ProviderHttpError("AI reply was not valid JSON", null, true);
   }
+}
+
+export function parseGenerated(text: string, keywords: string[] = []): GeneratedPost {
+  const raw = extractJson(text) as Record<string, unknown>;
+  // Older/smaller models sometimes return a single "hook".
+  if (!raw.hooks && typeof raw.hook === "string") raw.hooks = [raw.hook];
   const parsed = generatedSchema.safeParse(raw);
   if (!parsed.success) throw new ProviderHttpError(`AI reply was missing fields: ${parsed.error.issues.map((i) => i.path.join(".")).join(", ")}`, null, true);
   const p = parsed.data;
   const withLink = (s: string) => (s.includes(LINK_TOKEN) ? s : `${s}\n\n👉 ${LINK_TOKEN}`);
+  const kw = [p.primaryKeyword, ...keywords].filter(Boolean);
+  const hooks = [...new Set(p.hooks)].sort((a, b) => hookScore(b, kw) - hookScore(a, kw));
+  const stripHook = (s: string) => hooks.reduce((acc, h) => (acc.startsWith(h) ? acc.slice(h.length).trim() : acc), s.trim());
+  const platformTexts: GeneratedPost["platformTexts"] = {};
+  if (p.linkedin) platformTexts.linkedin = withLink(stripHook(p.linkedin));
+  if (p.instagram) platformTexts.instagram = withLink(stripHook(p.instagram));
   return {
-    hook: p.hook,
-    body: withLink(p.body),
-    shortBody: withLink(p.shortBody),
+    primaryKeyword: p.primaryKeyword,
+    hooks,
+    body: withLink(stripHook(p.body)),
+    shortBody: withLink(stripHook(p.shortBody)),
+    platformTexts,
+    thread: p.thread.filter(Boolean).slice(0, 4),
     engagementComment: p.engagementComment,
-    hashtags: p.hashtags.map((h) => h.replace(/^#/, "").replace(/\s+/g, "")).filter(Boolean).slice(0, 5),
+    hashtags: [...new Set(p.hashtags.map((h) => h.replace(/^#/, "").replace(/\s+/g, "")).filter(Boolean))].slice(0, 8),
+    altText: p.altText,
   };
 }
 
@@ -141,9 +216,30 @@ export async function complete(http: HttpClient, providerId: string, conn: Conne
   }
 }
 
-export async function generatePost(http: HttpClient, providerId: string, conn: Connection, brand: Brand, trend: TrendInput): Promise<GeneratedPost> {
-  const text = await complete(http, providerId, conn, systemPrompt(brand), userPrompt(trend));
-  return parseGenerated(text);
+export async function generatePost(http: HttpClient, providerId: string, conn: Connection, brand: Brand, trend: TrendInput, opts: { winningHooks?: string[] } = {}): Promise<GeneratedPost> {
+  const text = await complete(http, providerId, conn, systemPrompt(brand, opts), userPrompt(trend));
+  return parseGenerated(text, brand.keywords);
+}
+
+export function replySystemPrompt(brand: Brand) {
+  return [
+    `You reply to comments on social posts for the brand "${brand.brandName || "our brand"}".`,
+    brand.brandVoice ? `About the brand: ${brand.brandVoice}` : "",
+    "Write like a friendly human, never like a bot: short (max 220 characters), warm, specific to what they said.",
+    "Answer their point or question, add one bit of value, and when it fits naturally invite them to check the profile or link. Never paste the link yourself.",
+    "Reply in the same language as the comment.",
+    "If the comment is spam, abusive, a scam, or needs a human (complaint, legal, refund), set skip to true.",
+    'Return ONLY JSON: {"reply": string, "skip": boolean}',
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+export async function generateReply(http: HttpClient, providerId: string, conn: Connection, brand: Brand, ctx: { postHook: string; postText: string; comment: string; author?: string | null }) {
+  const user = `Our post: ${ctx.postHook}\n${ctx.postText.slice(0, 800)}\n\nComment${ctx.author ? ` from ${ctx.author}` : ""}: ${ctx.comment.slice(0, 1000)}\n\nWrite the reply.`;
+  const raw = extractJson(await complete(http, providerId, conn, replySystemPrompt(brand), user)) as { reply?: unknown; skip?: unknown };
+  const reply = typeof raw.reply === "string" ? raw.reply.trim().slice(0, 500) : "";
+  return { reply, skip: raw.skip === true || !reply };
 }
 
 export async function testAi(http: HttpClient, providerId: string, conn: Connection) {

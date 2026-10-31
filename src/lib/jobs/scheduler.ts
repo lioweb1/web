@@ -77,6 +77,22 @@ export async function schedulerTick(now = new Date()) {
     const j = await enqueue({ type: "social_scan", workspaceId: ap.workspaceId, idempotencyKey: `social_scan:${ap.workspaceId}:${ap.nextRunAt!.toISOString()}`, maxAttempts: 1 });
     if (j) stats.socialScans++;
   }
+  // Comments, replies and metrics for active autopilots every 30 minutes.
+  const engageDue = await db
+    .select({ workspaceId: schema.socialAutopilots.workspaceId })
+    .from(schema.socialAutopilots)
+    .where(and(eq(schema.socialAutopilots.active, true), sql`(${schema.socialAutopilots.engageSyncedAt} is null or ${schema.socialAutopilots.engageSyncedAt} < ${new Date(now.getTime() - 30 * 60_000)})`))
+    .limit(200);
+  const halfHour = Math.floor(now.getTime() / 1_800_000);
+  for (const ap of engageDue) await enqueue({ type: "social_engage", workspaceId: ap.workspaceId, idempotencyKey: `social_engage:${ap.workspaceId}:${halfHour}`, maxAttempts: 1 });
+  // Telegram approval buttons, polled once a minute where an approver chat is configured.
+  const tg = await db
+    .select({ workspaceId: schema.integrations.workspaceId })
+    .from(schema.integrations)
+    .where(and(eq(schema.integrations.providerId, "social:telegram"), sql`coalesce(${schema.integrations.settings}->>'approverChatId', '') <> ''`, isNotNull(schema.integrations.encryptedSecrets)))
+    .limit(500);
+  const minute = now.toISOString().slice(0, 16);
+  for (const t of tg) await enqueue({ type: "social_telegram_poll", workspaceId: t.workspaceId, idempotencyKey: `tgpoll:${t.workspaceId}:${minute}`, maxAttempts: 1 });
 
   // Hourly reminder sweep.
   await enqueue({ type: "task_reminders", workspaceId: null, idempotencyKey: `reminders:${now.toISOString().slice(0, 13)}` });

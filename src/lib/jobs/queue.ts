@@ -12,7 +12,9 @@ export type JobType =
   | "push_crm"
   | "task_reminders"
   | "social_scan"
-  | "social_publish";
+  | "social_publish"
+  | "social_engage"
+  | "social_telegram_poll";
 
 export type EnqueueInput = {
   type: JobType;
