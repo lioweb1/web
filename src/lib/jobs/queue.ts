@@ -10,7 +10,9 @@ export type JobType =
   | "send_digest"
   | "deliver_webhook"
   | "push_crm"
-  | "task_reminders";
+  | "task_reminders"
+  | "social_scan"
+  | "social_publish";
 
 export type EnqueueInput = {
   type: JobType;

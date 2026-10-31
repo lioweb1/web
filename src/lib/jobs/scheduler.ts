@@ -40,7 +40,7 @@ export async function enqueueRuleRun(rule: Rule, slot: string, opts: { manual?: 
 /** One scheduler pass. Safe to run concurrently (idempotency keys + conditional updates). */
 export async function schedulerTick(now = new Date()) {
   const db = systemDb();
-  const stats = { recovered: 0, rulesQueued: 0, digests: 0, quotaWarnings: 0 };
+  const stats = { recovered: 0, rulesQueued: 0, digests: 0, quotaWarnings: 0, socialScans: 0 };
   stats.recovered = await recoverStaleJobs();
 
   const due = await db
@@ -59,6 +59,23 @@ export async function schedulerTick(now = new Date()) {
     if (!claimed.length) continue;
     await enqueueRuleRun(rule, rule.nextRunAt!.toISOString());
     stats.rulesQueued++;
+  }
+
+  // Social autopilot scans.
+  const autopilots = await db
+    .select()
+    .from(schema.socialAutopilots)
+    .where(and(eq(schema.socialAutopilots.active, true), isNotNull(schema.socialAutopilots.nextRunAt), lte(schema.socialAutopilots.nextRunAt, now)))
+    .limit(200);
+  for (const ap of autopilots) {
+    const claimed = await db
+      .update(schema.socialAutopilots)
+      .set({ nextRunAt: new Date(now.getTime() + Math.max(30, ap.intervalMinutes) * 60_000) })
+      .where(and(eq(schema.socialAutopilots.workspaceId, ap.workspaceId), eq(schema.socialAutopilots.nextRunAt, ap.nextRunAt!)))
+      .returning({ id: schema.socialAutopilots.workspaceId });
+    if (!claimed.length) continue;
+    const j = await enqueue({ type: "social_scan", workspaceId: ap.workspaceId, idempotencyKey: `social_scan:${ap.workspaceId}:${ap.nextRunAt!.toISOString()}`, maxAttempts: 1 });
+    if (j) stats.socialScans++;
   }
 
   // Hourly reminder sweep.

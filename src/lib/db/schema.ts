@@ -729,3 +729,80 @@ export const usageRecords = pgTable(
   },
   (t) => [primaryKey({ columns: [t.workspaceId, t.metric, t.period] })],
 );
+
+/* ------------------------------------------------------------------ */
+/* Social autopilot                                                     */
+/* ------------------------------------------------------------------ */
+
+export type SocialAutopilotConfig = {
+  /** Niche keywords; a trend item must mention at least one. */
+  keywords: string[];
+  /** Trend sources: hackernews | google_news | reddit | bluesky | rss */
+  sources: string[];
+  subreddits: string[];
+  feeds: string[];
+  /** Platforms to publish to (see SOCIAL_PLATFORMS). */
+  platforms: string[];
+  /** gemini | groq | openrouter | ollama */
+  aiProvider: string;
+  brandName: string;
+  /** Free-text brand voice / product description used in the prompt. */
+  brandVoice: string;
+  link: string;
+  /** Language of generated posts, e.g. "English" or "Bangla". */
+  language: string;
+  /** "approve" keeps drafts for review; "auto" publishes immediately. */
+  mode: "approve" | "auto";
+  maxPostsPerDay: number;
+  /** Max drafts generated per scan. */
+  draftsPerScan: number;
+};
+
+export const socialAutopilots = pgTable("social_autopilots", {
+  workspaceId: uuid("workspace_id")
+    .primaryKey()
+    .references(() => workspaces.id, { onDelete: "cascade" }),
+  active: boolean("active").notNull().default(false),
+  config: jsonb("config").$type<SocialAutopilotConfig>().notNull(),
+  intervalMinutes: integer("interval_minutes").notNull().default(180),
+  lastRunAt: timestamp("last_run_at", { withTimezone: true }),
+  lastError: text("last_error"),
+  lastRunStats: jsonb("last_run_stats").$type<Record<string, number>>(),
+  nextRunAt: timestamp("next_run_at", { withTimezone: true }),
+  ...timestamps,
+});
+
+export type SocialPublishResult = { ok: boolean; url?: string | null; id?: string | null; error?: string | null; at: string };
+
+export const socialPosts = pgTable(
+  "social_posts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    /** Trend source (hackernews, reddit…) or "manual". */
+    sourceId: text("source_id").notNull(),
+    sourceExternalId: text("source_external_id"),
+    sourceTitle: text("source_title"),
+    sourceUrl: text("source_url"),
+    hook: text("hook").notNull(),
+    body: text("body").notNull(),
+    /** Short version for character-limited platforms (Bluesky, Threads, Mastodon). */
+    shortBody: text("short_body").notNull(),
+    engagementComment: text("engagement_comment"),
+    hashtags: text("hashtags").array().notNull().default(sql`'{}'::text[]`),
+    imageUrl: text("image_url"),
+    platforms: text("platforms").array().notNull(),
+    /** draft | queued | publishing | published | partial | failed | rejected */
+    status: text("status").notNull().default("draft"),
+    results: jsonb("results").$type<Record<string, SocialPublishResult>>().notNull().default({}),
+    aiProvider: text("ai_provider"),
+    publishedAt: timestamp("published_at", { withTimezone: true }),
+    ...timestamps,
+  },
+  (t) => [
+    index("social_posts_ws_idx").on(t.workspaceId, t.createdAt),
+    uniqueIndex("social_posts_source_uq").on(t.workspaceId, t.sourceExternalId).where(sql`${t.sourceExternalId} is not null`),
+  ],
+);

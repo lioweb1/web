@@ -15,11 +15,12 @@ import { isDemandSignal } from "@/lib/discovery/classify";
 import { ProviderHttpError } from "@/lib/providers/http";
 import { LimitExceededError } from "@/lib/plans";
 import { pushLeadToHubspot } from "@/lib/services/crm";
+import { runScan, publishPost, markPublishGivenUp, SocialConfigError } from "@/lib/social/service";
 
 export class PermanentJobError extends Error {}
 
 export function isPermanent(e: unknown) {
-  return e instanceof PermanentJobError || e instanceof LimitExceededError || (e instanceof ProviderHttpError && !e.retryable);
+  return e instanceof PermanentJobError || e instanceof LimitExceededError || e instanceof SocialConfigError || (e instanceof ProviderHttpError && !e.retryable);
 }
 
 type Handler = (job: Job) => Promise<Record<string, unknown>>;
@@ -173,6 +174,23 @@ export const handlers: Record<string, Handler> = {
 
   async push_crm(job) {
     return pushLeadToHubspot(job.workspaceId!, str(job.payload.leadId));
+  },
+
+  /** Social autopilot: find niche trends, draft posts and (in auto mode) queue them. */
+  async social_scan(job) {
+    const { errorMessages, ...stats } = await runScan(job.workspaceId!);
+    return { ...stats, errors: errorMessages.slice(0, 10) };
+  },
+
+  async social_publish(job) {
+    const ws = job.workspaceId!;
+    const postId = str(job.payload.postId);
+    try {
+      return await publishPost(ws, postId, { finalAttempt: job.attempts >= job.maxAttempts });
+    } catch (e) {
+      if (isPermanent(e) || job.attempts >= job.maxAttempts) await markPublishGivenUp(ws, postId);
+      throw e;
+    }
   },
 
   /** Hourly: follow-up reminders for due tasks and lead follow-up dates. */

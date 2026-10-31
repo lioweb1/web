@@ -22,6 +22,7 @@ Lead discovery, website and domain intelligence, explainable lead scoring and a 
 | CRM | 10 pipeline statuses, notes, tags, lists, priorities, owners, follow-ups and tasks, a communication log, activity timeline, merge duplicates, archive, delete, CSV import, and bulk actions. |
 | Search | Keyword search plus about 30 filters, sorting, pagination, saved searches, search history, quick filters, bulk tag and export, and saving a search as a monitoring rule. |
 | Notifications | In-app notification center and bell, browser notifications (with your permission), and email (immediate or daily digest) over your SMTP server. Per-type toggles, minimum score, country filters, quiet hours, and duplicate prevention. Every notification links to its lead and source. |
+| Social autopilot | Finds trending posts in your niche (Hacker News, Google News, Reddit RSS, Bluesky search, your RSS feeds), has a free-tier AI (Gemini by default; Groq, OpenRouter or self-hosted Ollama also work) write an original clickbait-style post, hook and engagement comment, then publishes to a Facebook Page, Instagram, Threads, Bluesky, Mastodon, a Telegram channel, a Discord channel and LinkedIn through their official APIs. Approval mode or fully automatic, with a daily post limit. Failed platforms are retried without double-posting the others. |
 | Automation | Signed webhooks (work with Zapier, Make or n8n), push to HubSpot's free CRM, auto-tagging, lists, follow-up reminders, and scheduled discovery. |
 | Analytics | KPIs and charts computed from stored data only, with empty states when there is no data. |
 | Security | scrypt password hashing, httpOnly session cookies with hashed tokens, PostgreSQL RLS on every workspace table, AES-256-GCM encrypted API keys (never sent to the browser), DB-backed rate limiting, zod validation, SSRF protection on every outbound fetch of user-supplied URLs, audit logs, data export and deletion, and opt-out suppression. |
@@ -88,6 +89,24 @@ Register at `/register`. Your workspace starts with the Premium Markets target. 
 
 Keys are encrypted with `APP_ENCRYPTION_KEY` before they are stored. Changing that key makes stored keys unreadable, so re-enter them if you do.
 
+### Social autopilot (free)
+
+Open *Social autopilot → Settings & connections*.
+
+1. **AI writer:** create a free key at <https://aistudio.google.com/apikey> and paste it in *Google Gemini*. Free-tier limits change from time to time, so check AI Studio. Free-tier prompts may be used by Google to improve its models, so don't put private data in them. Groq and OpenRouter (`:free` models) also have free tiers. For Ollama, set `OLLAMA_URL`.
+2. **Accounts:** connect the platforms you want. Each card links to the official setup guide.
+   - **Facebook Page:** use a Page access token with `pages_manage_posts` and the Page ID.
+   - **Instagram:** needs a Business or Creator account linked to a Page, a token with `instagram_content_publish`, and a public image for every post.
+   - **Threads:** use a token with `threads_content_publish`.
+   - **Bluesky:** use your handle and an *app password*.
+   - **Mastodon:** use the instance URL and a token with `write:statuses`.
+   - **Telegram:** use a bot token from @BotFather. The bot must be an admin of the channel.
+   - **Discord:** use a channel webhook URL.
+   - **LinkedIn:** use a member token with `w_member_social` and `openid profile`. It expires after about 60 days.
+3. **Autopilot:** enter niche keywords, your link and brand voice, then choose the sources, platforms, mode and daily limit, and switch it on. The worker scans on the interval you set.
+
+X (Twitter) is not supported because its API charges for posting, and automating it outside the API breaks its rules. Nothing in the autopilot scrapes or logs in to a social network's website.
+
 ### Email alerts (optional, free)
 
 Set the `SMTP_*` variables. Any SMTP server works, for example a Gmail account with an app password (`smtp.gmail.com:587`) or a free tier of a transactional email service. Without SMTP, in-app and browser notifications still work.
@@ -105,6 +124,8 @@ Set the `SMTP_*` variables. Any SMTP server works, for example a Gmail account w
 | `PROVIDER_CONTACT_EMAIL` | recommended | Added to the User-Agent. Required by the OpenStreetMap / Nominatim usage policy. |
 | `OVERPASS_API_URL`, `NOMINATIM_API_URL` | no | Point to self-hosted instances for heavy use. |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM` | no | Email notifications. |
+| `OLLAMA_URL` | no | Self-hosted Ollama server for the social autopilot AI writer, e.g. `http://localhost:11434`. |
+| `META_GRAPH_VERSION` | no | Facebook/Instagram Graph API version for social publishing (default `v23.0`). |
 | `CRON_SECRET` | no | Protects `POST /api/cron/tick` when you use an external cron instead of the worker. |
 
 ---

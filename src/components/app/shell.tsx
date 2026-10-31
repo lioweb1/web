@@ -3,7 +3,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
-  LayoutDashboard, Radar, Users, Globe, ScanSearch, Megaphone, BellRing, Bookmark, BarChart3, PlugZap, Download, Settings, CreditCard, LifeBuoy, PanelLeftClose, PanelLeftOpen, Menu, X, Activity,
+  LayoutDashboard, Radar, Users, Globe, ScanSearch, Megaphone, BellRing, Bookmark, BarChart3, PlugZap, Download, Settings, CreditCard, LifeBuoy, PanelLeftClose, PanelLeftOpen, Menu, X, Activity, Send,
 } from "lucide-react";
 import { cn } from "@/components/ui/cn";
 import { Logo } from "./logo";
@@ -22,6 +22,7 @@ const NAV = [
   ] },
   { section: "Automation", items: [
     { href: "/app/monitoring", label: "Monitoring rules", icon: BellRing },
+    { href: "/app/social", label: "Social autopilot", icon: Send },
     { href: "/app/jobs", label: "Jobs & activity", icon: Activity },
     { href: "/app/searches", label: "Saved searches", icon: Bookmark },
     { href: "/app/exports", label: "Exports", icon: Download },
