@@ -1,37 +1,46 @@
-# Forex Signal Bot (5m + 30m)
+# Forex Signal Bot (30m trend + 5m entry)
 
-Forex pair-gulo auto scan kore signal dey. **30 minute** candle theke trend dekhe, ar **5 minute** candle theke entry khoje.
-Prottek signal-e Entry, Stop Loss ar Take Profit thake. Kono npm package lage na, shudhu Node.js lagbe.
+Ekta professional-style forex signal bot. Kono npm package lage na, shudhu **Node.js 22.18 ba tar beshi** lagbe.
 
-> ⚠️ **90% accuracy keu guarantee dite pare na.** Ei bot shei daabi kore na. Real taka diye trade korar age
-> `npm run backtest` ar kichu shoptaho `npm run review` chalan. Eta financial advice na.
+> ⚠️ **Kono bot 90% accuracy guarantee dite pare na.** Ei bot paper trading kore (virtual taka), real order dey na.
+> Real taka diye trade korar age `npm run backtest` ar kichu shoptaho `npm run live`-er paper result dekhun.
+> Eta financial advice na.
 
-## Kivabe signal ashe
+## Features
 
-| Step | Timeframe | Rule |
-|------|-----------|------|
-| 1. Trend | 30m | Price EMA50-er upore ar EMA20 > EMA50 hole **UP**; ulta hole **DOWN** |
-| 2. Trigger | 5m | EMA9, EMA21 ke trend-er dike cross kore |
-| 3. Filter | 5m | Price 5m EMA50-er shothik pashe; RSI(14) BUY-er jonno 50–70, SELL-er jonno 30–50 |
-| 4. Risk | 5m | SL = 1.5 × ATR(14), TP = 2.25 × ATR(14) → 1.5R target |
+| Feature | Ki kore |
+|---|---|
+| **Multi-timeframe** | 30m candle theke trend (EMA20/50 + ADX), 5m candle theke entry |
+| **2 ta setup** | Trend Pullback (EMA9/21 cross) ar Breakout (2 ghontar high/low bhanga) |
+| **Strength Score 0–100** | Trend, trigger, ADX, RSI, session, 30m momentum ar volatility mile score dey. Eta *quality*, win probability na |
+| **News filter** | ForexFactory calendar dekhe high-impact news-er ±30 min age-pore signal block kore |
+| **Session filter** | Shudhu London / New York session-e trade (Asia session baad) |
+| **Smart exits** | TP1 (1R)-e 50% close + SL breakeven-e, baki ta TP2 (2R) porjonto |
+| **Lot size calculator** | Balance ar risk % (default 1%) theke lot size hisab kore, cross pair-o (EURJPY) |
+| **Portfolio risk** | Ek shathe max 3 trade, ek currency-te max 2 trade, din-e −3R loss hole oi din-er jonno bondho |
+| **Paper trading** | Virtual $10,000 account-e auto trade, balance ar P&L track kore |
+| **Web dashboard** | `http://localhost:3100`: balance, equity chart, live signal, open/closed trade, backtest, news, Pause/Resume |
+| **Telegram** | Signal alert, trade close alert, ar `/status` `/stats` `/open` `/pause` `/resume` command |
+| **Backtest** | Portfolio backtest, spread shoho; in-sample (70%) / out-of-sample (30%) alada, setup/score/pair onujayi |
+| **Optimizer** | 108 ta setting combination test kore, ar overfitting dhorar jonno out-of-sample result-o dekhay |
+| **No repainting** | Shudhu close howa candle use kore; test eta check kore |
 
-Tinta shorto ek shathe mille tobei signal ashe. Signal ashe shudhu **close howa** candle theke,
-tai repaint kore na (`test/strategy.check.ts` eta check kore). Shob setting `src/config.ts`-e ache.
+Pair: EURUSD, GBPUSD, USDJPY, AUDUSD, USDCAD, USDCHF, EURJPY, XAUUSD (gold-er jonno COMEX futures proxy).
+Data: Yahoo Finance (free, kono API key lage na; 5m data shorbochcho ~60 din).
 
-Default pair: EURUSD, GBPUSD, USDJPY, AUDUSD, USDCAD. Data ashe Yahoo Finance theke (free, kono API key lage na).
-
-## Chalanor niyom (Node.js 22.18 ba tar beshi)
+## Commands
 
 ```bash
 cd forex-signal-bot
-npm run backtest   # gotho ~60 diner 5m data-te rules test kore, spread shoho
-npm run live       # protiti 5m candle close howar por scan kore, signal print/Telegram kore
-npm run once       # ekbar scan kore bondho hoy (cron-er jonno)
-npm run review     # live signal gulo asole jitlo na harlo, tar hisab
+npm run demo       # internet chhara dashboard dekhun (synthetic data)
+npm run backtest   # ~60 diner real data-y test; result dashboard-e-o dekhabe
+npm run optimize   # bhalo setting khoje, out-of-sample diye check kore
+npm run live       # live bot + dashboard (http://localhost:3100)
+npm run once       # ekbar scan (cron-er jonno)
 npm test
 ```
 
-### Telegram-e signal pete
+### Telegram setup
 
 1. Telegram-e **@BotFather** → `/newbot` → token copy korun.
 2. Notun bot-ke ekta message pathan, tarpor `https://api.telegram.org/bot<TOKEN>/getUpdates` khule `chat.id` nin.
@@ -41,9 +50,30 @@ npm test
 TELEGRAM_BOT_TOKEN=xxx TELEGRAM_CHAT_ID=yyy npm run live
 ```
 
+Bot shudhu apnar chat ID theke asha command-er uttor dey.
+
+## Settings
+
+Shob setting `src/config.ts`-e ache: pair, spread, EMA/RSI/ADX period, SL/TP, min score, risk %, max trade,
+daily loss limit, news window. `npm run optimize` je setting out-of-sample-e-o positive dekhay, shegulo boshan.
+
 ## Result kivabe porben
 
-- **Win %**: 1.5R target-e break-even korte ~40% win lagbe (spread-er karone ektu beshi).
-- **avg R / PF**: asol jinish. PF > 1 mane spread-er porew lav. Win % beshi kintu PF < 1 hole loss.
-- **maxDD**: shobcheye boro dhoshon, R-e. 1R = protiti trade-e apni joto taka risk koren.
-- Shudhu 60 diner data, tai backtest result eta-ke proman na, ekta ingit hishebe dhorun.
+- **Win %** ekhane mane je trade gulo R > 0-te shesh hoyeche. TP1-er por breakeven-e bondho howa trade-o er moddhe dhora hoy.
+  Tai win % beshi holeo lav na-o hote pare. **Demo-tei dekhun: 59% win, kintu PF 0.80, mane loss.**
+- **avg R ar PF (profit factor)** asol jinish. PF > 1 mane spread-er porew lav.
+- **Out-of-sample** result-ke beshi bishshash korun. In-sample bhalo kintu out-of-sample kharap hole bujhben overfit.
+- **Score** column dekhun: high-score trade jodi low-score-er cheye bhalo na kore, tahole score filter kono kaj korche na.
+
+## Files
+
+```
+src/config.ts     settings          src/strategy.ts   setup + score
+src/indicators.ts EMA/RSI/ATR/ADX   src/simulate.ts   TP1/BE/TP2 trade management
+src/risk.ts       lot size, rules   src/news.ts       news filter
+src/paper.ts      paper account     src/telegram.ts   alerts + commands
+src/dashboard.ts  web dashboard     src/live.ts       live bot
+src/backtest.ts   backtest/report   src/optimize.ts   optimizer
+```
+
+Paper account ar backtest result `data/` folder-e save hoy (git-e jay na). Notun kore shuru korte `data/paper.json` delete korun.

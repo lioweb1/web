@@ -1,2 +1,3 @@
-signals.jsonl
+data/
 .env
+signals.jsonl

@@ -3,13 +3,16 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "5m + 30m multi-timeframe forex signal bot with backtester and Telegram alerts. No dependencies.",
-  "engines": { "node": ">=22.18" },
+  "description": "Forex signal bot: 30m trend + 5m entries, strength score, news/session filters, paper trading, dashboard, Telegram. No dependencies.",
+  "engines": {
+    "node": ">=22.18"
+  },
   "scripts": {
     "live": "node --disable-warning=ExperimentalWarning src/live.ts",
     "once": "node --disable-warning=ExperimentalWarning src/live.ts --once",
     "backtest": "node --disable-warning=ExperimentalWarning src/backtest.ts",
-    "review": "node --disable-warning=ExperimentalWarning src/review.ts",
+    "optimize": "node --disable-warning=ExperimentalWarning src/optimize.ts",
+    "demo": "node --disable-warning=ExperimentalWarning src/demo.ts",
     "test": "node --disable-warning=ExperimentalWarning --test test/strategy.check.ts"
   }
 }

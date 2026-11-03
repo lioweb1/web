@@ -39,3 +39,29 @@ export async function fetchCandles(ticker: string, interval: "5m" | "30m", range
   }
   throw lastErr;
 }
+
+export interface SymbolData {
+  cfg: import("./config.ts").SymbolConfig;
+  c5: Candle[];
+  c30: Candle[];
+}
+
+/** Fetch 5m + 30m candles for every symbol. Symbols that fail are reported and skipped. */
+export async function loadAll(
+  symbols: import("./config.ts").SymbolConfig[],
+  range5 = "60d",
+  range30 = "60d",
+): Promise<SymbolData[]> {
+  const out = await Promise.all(
+    symbols.map(async (cfg) => {
+      try {
+        const [c5, c30] = await Promise.all([fetchCandles(cfg.yahoo, "5m", range5), fetchCandles(cfg.yahoo, "30m", range30)]);
+        return { cfg, c5, c30 };
+      } catch (err) {
+        console.error(`${cfg.name}: ${(err as Error).message}`);
+        return null;
+      }
+    }),
+  );
+  return out.filter((d): d is SymbolData => d !== null && d.c5.length > 0);
+}
