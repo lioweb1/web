@@ -20,6 +20,8 @@ Ekta professional-style forex signal bot. Kono npm package lage na, shudhu **Nod
 | **Portfolio risk** | Ek shathe max 3 trade, ek currency-te max 2 trade, din-e −3R loss hole oi din-er jonno bondho |
 | **Paper trading** | Virtual $10,000 account-e auto trade, balance ar P&L track kore |
 | **Web dashboard** | `http://localhost:3100`: balance, equity chart, live signal, open/closed trade, backtest, news, Pause/Resume |
+| **Voice + sound alert** | Signal ashle dashboard-e beep baje, voice-e **"Buy signal, E U R U S D, entry..."** bole (English ba Bangla), notification ar screen-e popup dekhay |
+| **Mobile** | `npm run live:mobile` dile same Wi-Fi-te phone theke dashboard khola jay; "Add to Home Screen" kore app-er moto use kora jay |
 | **Telegram** | Signal alert, trade close alert, ar `/status` `/stats` `/open` `/pause` `/resume` command |
 | **Backtest** | Portfolio backtest, spread shoho; in-sample (70%) / out-of-sample (30%) alada, setup/score/pair onujayi |
 | **Optimizer** | 108 ta setting combination test kore, ar overfitting dhorar jonno out-of-sample result-o dekhay |
@@ -36,9 +38,29 @@ npm run demo       # internet chhara dashboard dekhun (synthetic data)
 npm run backtest   # ~60 diner real data-y test; result dashboard-e-o dekhabe
 npm run optimize   # bhalo setting khoje, out-of-sample diye check kore
 npm run live       # live bot + dashboard (http://localhost:3100)
+npm run live:mobile # same, kintu phone theke-o khola jay (same Wi-Fi)
 npm run once       # ekbar scan (cron-er jonno)
 npm test
 ```
+
+### Voice alert (dashboard)
+
+1. Dashboard khulun, upore **🔕 Enable alerts** button-e ekbar click korun (browser-er niyom: shobdo bajate ekbar click lagbe).
+2. Pashe **English voice / Bangla voice** bechhe nin. Bangla voice phone/computer-e install thakle Bangla-y bolbe, na thakle English-e.
+3. Tab ta khola rakhun. Signal ashle beep bajbe, voice-e Buy/Sell bolbe, ar popup dekhabe.
+
+Phone-e browser tab bondho ba screen lock hole voice alert bajbe na. Phone-er jonno **Telegram** shobcheye bhalo: screen lock thakleo notification ashe.
+
+### Mobile theke dashboard
+
+Computer-e bot chalan:
+
+```bash
+npm run live:mobile
+```
+
+Terminal-e `http://192.168.x.x:3100`-er moto ekta link dekhabe. Phone same Wi-Fi-te rekhe oi link khulun, tarpor browser menu theke **Add to Home Screen** korun.
+Lokkho korun: `--lan` mode-e same Wi-Fi-r je keu dashboard dekhte ar bot pause korte parbe. Bahire theke (mobile data) dekhte chaile Telegram use korun.
 
 ### Telegram setup
 

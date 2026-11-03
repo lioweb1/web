@@ -13,6 +13,8 @@
     "backtest": "node --disable-warning=ExperimentalWarning src/backtest.ts",
     "optimize": "node --disable-warning=ExperimentalWarning src/optimize.ts",
     "demo": "node --disable-warning=ExperimentalWarning src/demo.ts",
-    "test": "node --disable-warning=ExperimentalWarning --test test/strategy.check.ts"
+    "test": "node --disable-warning=ExperimentalWarning --test test/strategy.check.ts",
+    "live:mobile": "node --disable-warning=ExperimentalWarning src/live.ts --lan",
+    "demo:mobile": "node --disable-warning=ExperimentalWarning src/demo.ts --lan"
   }
 }

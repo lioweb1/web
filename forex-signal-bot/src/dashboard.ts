@@ -10,9 +10,15 @@ export interface DashboardSource {
   news: () => NewsEvent[];
   setPaused: (paused: boolean) => void;
   telegram: boolean;
+  /** URLs to show for opening the dashboard from a phone (set when listening on the LAN). */
+  lanUrls?: string[];
 }
 
-/** Local web dashboard. Binds to 127.0.0.1 only, so it is not reachable from other machines. */
+/**
+ * Web dashboard. Binds to 127.0.0.1 by default so only this computer can open it; pass
+ * host "0.0.0.0" to also allow phones on the same Wi-Fi (anyone on that network can then
+ * see and pause the bot).
+ */
 export function startDashboard(src: DashboardSource, port: number, host = "127.0.0.1"): Promise<Server> {
   const server = createServer((req, res) => {
     const url = req.url ?? "/";
@@ -25,7 +31,13 @@ export function startDashboard(src: DashboardSource, port: number, host = "127.0
         state: src.state(),
         backtest: src.backtest(),
         news: src.news().filter((n) => n.time > Date.now() - 3600_000).slice(0, 12),
-        settings: { strategy: STRATEGY, risk: RISK, symbols: SYMBOLS.map((s) => s.name), telegram: src.telegram },
+        settings: {
+          strategy: STRATEGY,
+          risk: RISK,
+          symbols: SYMBOLS.map((s) => s.name),
+          telegram: src.telegram,
+          lanUrls: src.lanUrls ?? [],
+        },
         now: Date.now(),
       };
       res.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" });
@@ -47,6 +59,10 @@ const HTML = /* html */ `<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#2f5bd3">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Signals">
 <title>Forex Signal Bot</title>
 <style>
 :root {
@@ -64,12 +80,18 @@ main { max-width: 1280px; margin: 0 auto; padding: 20px 16px 48px; }
 header { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; justify-content: space-between; margin-bottom: 16px; }
 h1 { font-size: 20px; margin: 0; letter-spacing: -0.01em; }
 h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 0 0 10px; font-weight: 600; }
-.status { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 13px; }
+.status { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; color: var(--muted); font-size: 13px; }
+.status button, .status select { white-space: nowrap; }
 .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--up); display: inline-block; }
 .dot.paused { background: var(--warn); }
 button { font: inherit; border: 1px solid var(--line); background: var(--panel); color: var(--text);
   padding: 6px 12px; border-radius: 6px; cursor: pointer; }
 button:hover { border-color: var(--accent); }
+button.on { border-color: var(--up); color: var(--up); }
+select { font: inherit; border: 1px solid var(--line); background: var(--panel); color: var(--text); padding: 6px 8px; border-radius: 6px; }
+.toast { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); background: var(--panel); border: 1px solid var(--line);
+  border-left: 4px solid var(--accent); border-radius: 8px; padding: 12px 16px; font-size: 15px; font-weight: 600; box-shadow: 0 6px 24px rgba(0,0,0,.18); z-index: 9; max-width: calc(100vw - 32px); }
+.toast.BUY { border-left-color: var(--up); } .toast.SELL { border-left-color: var(--down); }
 .banner { background: var(--chip); border: 1px solid var(--line); border-left: 3px solid var(--warn);
   padding: 10px 12px; border-radius: 6px; margin-bottom: 16px; font-size: 13px; }
 .grid { display: grid; gap: 12px; }
@@ -102,8 +124,12 @@ details summary { cursor: pointer; color: var(--muted); }
   <header>
     <h1>Forex Signal Bot</h1>
     <div class="status"><span id="dot" class="dot"></span><span id="statusText">Loading…</span>
+      <select id="voice" title="Voice language"><option value="en-US">English voice</option><option value="bn-BD">Bangla voice</option></select>
+      <button id="alerts">🔕 Enable alerts</button>
       <button id="toggle">Pause</button></div>
   </header>
+  <div id="alertHint" class="banner">Tap <b>Enable alerts</b> once so this browser can play a sound and <b>say "Buy" or "Sell"</b> when a signal comes. Keep this tab open (on a phone, keep the screen on or use Telegram, which also alerts when the phone is locked).</div>
+  <div id="lan" class="banner" hidden></div>
   <div id="demo" class="banner" hidden>DEMO MODE: this dashboard is filled with <b>synthetic random data</b> so you can see the layout. These numbers say nothing about real performance. Run <code>npm run backtest</code> and <code>npm run live</code> for real data.</div>
   <div class="grid kpis" id="kpis"></div>
   <div class="grid two">
@@ -126,6 +152,104 @@ const t = (ms) => new Date(ms).toISOString().slice(5, 16).replace("T", " ");
 const digits = (sym) => (sym.includes("JPY") ? 3 : sym === "XAUUSD" ? 2 : 5);
 const px = (sym, v) => v.toFixed(digits(sym));
 let paused = false;
+
+// ---------- Alerts: sound, voice ("Buy EURUSD"), notification, on-screen toast ----------
+let alertsOn = false, audioCtx = null, lastSignalKey = null, lastClosedCount = null, wakeLock = null;
+const voiceSel = $("voice");
+try { voiceSel.value = localStorage.getItem("voice") || "en-US"; } catch (e) {}
+voiceSel.onchange = () => { try { localStorage.setItem("voice", voiceSel.value); } catch (e) {} };
+const bn = () => voiceSel.value.startsWith("bn");
+
+function beep(kind) {
+  if (!audioCtx) return;
+  const notes = kind === "BUY" ? [660, 880, 1100] : kind === "SELL" ? [880, 660, 440] : [520];
+  notes.forEach((f, i) => {
+    const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+    o.frequency.value = f; o.connect(g); g.connect(audioCtx.destination);
+    const t0 = audioCtx.currentTime + i * 0.2;
+    g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(0.35, t0 + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.18);
+    o.start(t0); o.stop(t0 + 0.2);
+  });
+}
+function speak(text) {
+  if (!("speechSynthesis" in window)) return;
+  const u = new SpeechSynthesisUtterance(text);
+  u.lang = voiceSel.value; u.rate = 0.95;
+  const want = voiceSel.value.toLowerCase().slice(0, 2);
+  const v = speechSynthesis.getVoices().find((x) => x.lang.toLowerCase().startsWith(want));
+  if (v) u.voice = v;
+  speechSynthesis.cancel();
+  speechSynthesis.speak(u);
+}
+const spell = (sym) => sym.split("").join(" ");
+function signalSpeech(s) {
+  const pair = spell(s.symbol);
+  if (bn()) return (s.side === "BUY" ? "কিনুন" : "বিক্রি করুন") + ", " + pair + ". এন্ট্রি " + px(s.symbol, s.entry) + ". স্টপ লস " + px(s.symbol, s.stopLoss) + ". টেক প্রফিট " + px(s.symbol, s.tp2) + ".";
+  return (s.side === "BUY" ? "Buy" : "Sell") + " signal, " + pair + ". Entry " + px(s.symbol, s.entry) + ". Stop loss " + px(s.symbol, s.stopLoss) + ". Take profit " + px(s.symbol, s.tp2) + ". Strength " + s.score + ".";
+}
+function closeSpeech(x) {
+  const res = x.result.r > 0 ? (bn() ? "লাভ" : "profit") : x.result.r < 0 ? (bn() ? "লস" : "loss") : (bn() ? "ব্রেক ইভেন" : "breakeven");
+  return spell(x.symbol) + (bn() ? " ট্রেড বন্ধ হয়েছে, " : " trade closed, ") + res + ", " + r(x.result.r).replace("R", " R");
+}
+function toast(text, kind) {
+  const el = document.createElement("div");
+  el.className = "toast " + (kind || ""); el.textContent = text;
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 12000);
+}
+function notify(title, body) {
+  if (!("Notification" in window) || Notification.permission !== "granted") return;
+  try { new Notification(title, { body, tag: title }); } catch (e) {}
+}
+function announceSignal(s) {
+  const title = (s.side === "BUY" ? "🟢 BUY " : "🔴 SELL ") + s.symbol + (s.status === "BLOCKED" ? " (skipped)" : "");
+  const body = "Entry " + px(s.symbol, s.entry) + "  SL " + px(s.symbol, s.stopLoss) + "  TP " + px(s.symbol, s.tp2) + "  score " + s.score + (s.reason ? "  · " + s.reason : "");
+  toast(title + " · " + body, s.side);
+  notify(title, body);
+  if (!alertsOn) return;
+  beep(s.side);
+  setTimeout(() => speak(signalSpeech(s) + (s.status === "BLOCKED" ? (bn() ? " এই ট্রেড নেওয়া হয়নি।" : " Trade skipped.") : "")), 700);
+}
+function announceClose(x) {
+  toast((x.result.r > 0 ? "✅ " : x.result.r < 0 ? "❌ " : "⚪ ") + x.symbol + " closed " + r(x.result.r) + " (" + usd(x.pnlUSD) + ")");
+  notify(x.symbol + " closed " + r(x.result.r), x.result.outcome + " · " + usd(x.pnlUSD));
+  if (!alertsOn) return;
+  beep("CLOSE");
+  setTimeout(() => speak(closeSpeech(x)), 400);
+}
+function checkAlerts(st) {
+  const sigs = st.signals, latest = sigs[sigs.length - 1];
+  const key = latest ? latest.id + latest.status : "";
+  if (lastSignalKey === null) lastSignalKey = key;
+  else if (key !== lastSignalKey) {
+    const fresh = [];
+    for (let i = sigs.length - 1; i >= 0 && sigs[i].id + sigs[i].status !== lastSignalKey; i--) fresh.unshift(sigs[i]);
+    lastSignalKey = key;
+    fresh.slice(-3).forEach((s, i) => setTimeout(() => announceSignal(s), i * 9000));
+  }
+  if (lastClosedCount === null) lastClosedCount = st.closed.length;
+  else if (st.closed.length > lastClosedCount) {
+    st.closed.slice(lastClosedCount).slice(-3).forEach((x, i) => setTimeout(() => announceClose(x), 2000 + i * 6000));
+    lastClosedCount = st.closed.length;
+  }
+}
+$("alerts").onclick = async () => {
+  if (alertsOn) {
+    alertsOn = false; $("alerts").textContent = "🔕 Enable alerts"; $("alerts").className = "";
+    if (wakeLock) { try { wakeLock.release(); } catch (e) {} wakeLock = null; }
+    return;
+  }
+  try { audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)(); await audioCtx.resume(); } catch (e) {}
+  if ("speechSynthesis" in window) { speechSynthesis.getVoices(); speechSynthesis.speak(new SpeechSynthesisUtterance(" ")); }
+  if ("Notification" in window && Notification.permission === "default") { try { await Notification.requestPermission(); } catch (e) {} }
+  try { if (navigator.wakeLock) wakeLock = await navigator.wakeLock.request("screen"); } catch (e) {}
+  alertsOn = true; $("alerts").textContent = "🔔 Alerts on"; $("alerts").className = "on"; $("alertHint").hidden = true;
+  beep("BUY");
+  setTimeout(() => speak(bn() ? "অ্যালার্ট চালু হয়েছে। সিগন্যাল এলে আমি বলব কিনুন অথবা বিক্রি করুন।" : "Alerts on. I will say buy or sell when a signal comes."), 700);
+};
+document.addEventListener("visibilitychange", async () => {
+  if (alertsOn && document.visibilityState === "visible" && navigator.wakeLock && !wakeLock) { try { wakeLock = await navigator.wakeLock.request("screen"); } catch (e) {} }
+});
 
 function table(rows, cols, empty) {
   if (!rows.length) return '<div class="empty">' + empty + "</div>";
@@ -167,6 +291,10 @@ function render(data) {
   $("dot").className = "dot" + (paused ? " paused" : "");
   $("statusText").textContent = (paused ? "Paused" : "Running") + " · last scan " + (st.lastScan ? Math.round((now - st.lastScan) / 60000) + " min ago" : "never") + (data.settings.telegram ? " · Telegram on" : "");
   $("toggle").textContent = paused ? "Resume" : "Pause";
+  const urls = data.settings.lanUrls || [];
+  $("lan").hidden = !urls.length;
+  if (urls.length) $("lan").innerHTML = "📱 On your phone (same Wi-Fi) open: " + urls.map((u) => "<b>" + esc(u) + "</b>").join(" or ") + ". Then use the browser menu → <b>Add to Home Screen</b>.";
+  checkAlerts(st);
 
   const closed = st.closed;
   const wins = closed.filter((x) => x.result.r > 0).length;

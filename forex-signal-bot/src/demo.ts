@@ -2,6 +2,7 @@ import { DASHBOARD_PORT, RISK, SYMBOLS } from "./config.ts";
 import type { SymbolData } from "./data.ts";
 import { report, runBacktest } from "./backtest.ts";
 import { startDashboard } from "./dashboard.ts";
+import { dashboardHost, lanUrls } from "./lan.ts";
 import { newState, type PaperState } from "./paper.ts";
 import { lotSize } from "./risk.ts";
 import { synthetic5m, to30m } from "./synthetic.ts";
@@ -47,10 +48,21 @@ export function demoState(data: SymbolData[]): { state: PaperState; backtest: Re
 
 if (import.meta.main) {
   const { state, backtest } = demoState(demoData());
+  const host = dashboardHost();
+  const urls = lanUrls(host, DASHBOARD_PORT);
   const server = await startDashboard(
-    { state: () => state, backtest: () => backtest, news: () => [], setPaused: (p) => (state.paused = p), telegram: false },
+    { state: () => state, backtest: () => backtest, news: () => [], setPaused: (p) => (state.paused = p), telegram: false, lanUrls: urls },
     DASHBOARD_PORT,
+    host,
   );
   const addr = server.address();
   console.log(`Demo dashboard (synthetic data): http://localhost:${typeof addr === "object" && addr ? addr.port : DASHBOARD_PORT}`);
+  if (urls.length) console.log(`On your phone (same Wi-Fi): ${urls.join("  or  ")}`);
+  // Demo: add a fake new signal every 20s so the alert sound / voice can be tested.
+  const demoSignals = state.signals.slice(-8);
+  let k = 0;
+  setInterval(() => {
+    const s = demoSignals[k++ % demoSignals.length];
+    state.signals.push({ ...s, id: `${s.id}-demo-${k}`, candleTime: Date.now() - 300_000 });
+  }, 20_000);
 }

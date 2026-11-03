@@ -143,7 +143,10 @@ test("portfolio backtest and dashboard API work end to end", async () => {
   const addr = server.address();
   const base = `http://127.0.0.1:${typeof addr === "object" && addr ? addr.port : 0}`;
   try {
-    assert.match(await (await fetch(base + "/")).text(), /Forex Signal Bot/);
+    const html = await (await fetch(base + "/")).text();
+    assert.match(html, /Forex Signal Bot/);
+    assert.match(html, /Enable alerts/);
+    assert.match(html, /speechSynthesis/);
     const api = await (await fetch(base + "/api/state")).json();
     assert.equal(api.state.demo, true);
     assert.ok(api.backtest.overall.trades > 0);

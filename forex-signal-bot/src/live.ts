@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { DASHBOARD_PORT, FIVE_MIN, SYMBOLS, symbolConfig } from "./config.ts";
 import { loadAll } from "./data.ts";
 import { startDashboard } from "./dashboard.ts";
+import { dashboardHost, lanUrls } from "./lan.ts";
 import { blockingNews, highImpactNews, type NewsEvent } from "./news.ts";
 import { loadState, saveState, strategySummary, todayR, tryOpen, updateOpenTrades } from "./paper.ts";
 import type { PriceMap } from "./risk.ts";
@@ -93,6 +94,8 @@ function command(cmd: string): string {
 async function main() {
   if (process.argv.includes("--once")) return scan();
 
+  const host = dashboardHost();
+  const urls = lanUrls(host, DASHBOARD_PORT);
   const server = await startDashboard(
     {
       state: () => state,
@@ -103,12 +106,16 @@ async function main() {
         saveState(state, STATE_FILE);
       },
       telegram: telegramEnabled(),
+      lanUrls: urls,
     },
     DASHBOARD_PORT,
+    host,
   );
   const addr = server.address();
   const port = typeof addr === "object" && addr ? addr.port : DASHBOARD_PORT;
   console.log(`Dashboard: http://localhost:${port}`);
+  if (urls.length) console.log(`On your phone (same Wi-Fi): ${urls.join("  or  ")}`);
+  else console.log("Add --lan to open the dashboard from your phone on the same Wi-Fi.");
   console.log(telegramEnabled() ? "Telegram alerts + commands on." : "Telegram not configured - alerts go to console and dashboard only.");
   console.log(`Strategy: ${strategySummary()}`);
   void pollCommands(command);
