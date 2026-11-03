@@ -19,7 +19,7 @@
 //  built-in win-rate tracker and a demo account before trading real money.
 //+------------------------------------------------------------------+
 #property copyright   "Apex Pulse"
-#property version     "1.00"
+#property version     "1.10"
 #property description "Apex Pulse 5M PRO - non-repainting next-candle CALL/PUT signals."
 #property description "Signals use closed candles only and never change afterwards."
 #property description "High risk: past win-rate does not guarantee future results."
@@ -48,6 +48,7 @@ enum ENUM_APX_SESSION
 //--- inputs
 input string          InpGrpSignal      = "====== SIGNAL ENGINE ======"; // ====== SIGNAL ENGINE ======
 input int             InpMinScore       = 70;          // Minimum confluence score (0-100)
+input bool            InpPremiumOnly    = false;       // Premium-only mode (score 85+ only, fewer signals)
 input int             InpCooldownBars   = 2;           // Bars to wait after a signal
 input int             InpEmaFast        = 21;          // Fast EMA
 input int             InpEmaSlow        = 50;          // Slow EMA
@@ -65,6 +66,13 @@ input int             InpAtrFast        = 14;          // ATR fast (volatility)
 input int             InpAtrSlow        = 100;         // ATR slow (volatility baseline)
 input double          InpMinVolRatio    = 0.60;        // Skip if volatility below x baseline
 input double          InpMaxVolRatio    = 2.50;        // Skip if volatility above x baseline (news spikes)
+input int             InpSrLookback     = 40;          // Support/resistance lookback (bars)
+input double          InpSrAtrMult      = 0.80;        // Skip CALL under resistance / PUT over support within x ATR
+input int             InpMaxConsecutive = 4;           // Skip after N same-color candles (exhaustion)
+input bool            InpSmartFilter    = true;        // Smart filter: pause a direction after poor recent results
+input int             InpSmartWindow    = 20;          // Smart filter: recent trades checked per direction
+input double          InpSmartMinWr     = 50.0;        // Smart filter: pause below this win rate %
+input int             InpMaxSpreadPts   = 30;          // Spread warning above (points)
 input ENUM_APX_SESSION InpSession       = APX_SESSION_ALL; // Session filter
 input int             InpBrokerGmtOffset= 2;           // Broker server time GMT offset (hours)
 
@@ -79,7 +87,7 @@ input string          InpGrpDisplay     = "====== DISPLAY ======"; // ====== DIS
 input bool            InpShowDashboard  = true;        // Show dashboard
 input int             InpPanelX         = 14;          // Dashboard X (from left)
 input int             InpPanelY         = 24;          // Dashboard Y (from top)
-input int             InpPanelWidth     = 320;         // Dashboard width (px)
+input int             InpPanelWidth     = 340;         // Dashboard width (px)
 input int             InpFontSize       = 9;           // Dashboard font size
 input bool            InpShowScoreLabels= true;        // Show score next to arrows
 input int             InpArrowSize      = 3;           // Arrow size
@@ -135,6 +143,10 @@ double   g_liveBuy=0, g_liveSell=0;
 string   g_liveReason="";
 int      g_trendChart=0, g_trendH1=0, g_trendH2=0;
 double   g_rsi=0, g_stoch=0, g_volRatio=0;
+bool     g_cBuy[7], g_cSell[7];          // checklist flags from last CalcScores call
+bool     g_pauseBuy=false, g_pauseSell=false;
+int      g_hW[24], g_hL[24];
+string   CHK_NAMES[7] = {"Trend M5","Trend HTF1","Trend HTF2","Stoch trigger","RSI momentum","MACD momentum","Candle action"};
 
 //+------------------------------------------------------------------+
 int OnInit()
@@ -289,13 +301,19 @@ void EvaluateBar(const int i)
    string reason = "";
    int dir = 0;
 
+   int minScore = InpPremiumOnly ? MathMax(InpMinScore,85) : InpMinScore;
+
    if(FiltersOk(i,reason) && !InCooldown(i))
      {
-      if(bt && bs >= InpMinScore && bs > ss)
+      if(bt && bs >= minScore && bs > ss)
          dir = 1;
-      else if(st && ss >= InpMinScore && ss > bs)
+      else if(st && ss >= minScore && ss > bs)
          dir = -1;
      }
+
+   // Second-stage quality filters (all based on closed data only)
+   if(dir != 0 && (!SrOk(i,dir) || !ExhaustionOk(i,dir) || !SmartOk(i,dir)))
+      dir = 0;
 
    if(dir == 0)
      {
@@ -336,6 +354,7 @@ void EvaluateBar(const int i)
 void CalcScores(const int i,double &buyS,double &sellS,bool &buyTrig,bool &sellTrig)
   {
    buyS=0; sellS=0; buyTrig=false; sellTrig=false;
+   for(int q=0; q<7; q++) { g_cBuy[q]=false; g_cSell[q]=false; }
 
    double emaF  = iMA(NULL,0,InpEmaFast,0,MODE_EMA,PRICE_CLOSE,i);
    double emaF1 = iMA(NULL,0,InpEmaFast,0,MODE_EMA,PRICE_CLOSE,i+1);
@@ -354,34 +373,34 @@ void CalcScores(const int i,double &buyS,double &sellS,bool &buyTrig,bool &sellT
    double range=h-l, body=MathAbs(c-o);
 
    // 1) Chart trend (20)
-   if(c > emaS && emaF > emaS && emaF > emaF1)      buyS += 20;
+   if(c > emaS && emaF > emaS && emaF > emaF1)    { buyS += 20; g_cBuy[0]=true; }
    else if(emaF > emaS)                             buyS += 10;
-   if(c < emaS && emaF < emaS && emaF < emaF1)      sellS += 20;
+   if(c < emaS && emaF < emaS && emaF < emaF1)    { sellS += 20; g_cSell[0]=true; }
    else if(emaF < emaS)                             sellS += 10;
 
    // 2) Higher-timeframe trend (15 + 10)
    int t1 = HtfTrend(InpHtf1,i);
    int t2 = HtfTrend(InpHtf2,i);
-   if(t1 > 0) buyS += 15;
-   if(t1 < 0) sellS += 15;
-   if(t2 > 0) buyS += 10;
-   if(t2 < 0) sellS += 10;
+   if(t1 > 0) { buyS += 15;  g_cBuy[1]=true; }
+   if(t1 < 0) { sellS += 15; g_cSell[1]=true; }
+   if(t2 > 0) { buyS += 10;  g_cBuy[2]=true; }
+   if(t2 < 0) { sellS += 10; g_cSell[2]=true; }
 
    // 3) Stochastic trigger: pullback ends and momentum turns (20)
    buyTrig  = (k1 <= d1 && k0 > d0 && MathMin(k1,d1) <= InpStochZone);
    sellTrig = (k1 >= d1 && k0 < d0 && MathMax(k1,d1) >= 100.0 - InpStochZone);
-   if(buyTrig)                     buyS += 20;
+   if(buyTrig)                   { buyS += 20; g_cBuy[3]=true; }
    else if(k0 > d0 && k0 > k1)     buyS += 8;
-   if(sellTrig)                    sellS += 20;
+   if(sellTrig)                  { sellS += 20; g_cSell[3]=true; }
    else if(k0 < d0 && k0 < k1)     sellS += 8;
 
    // 4) RSI momentum, not overextended (10)
-   if(rsi0 >= 45 && rsi0 <= 70 && rsi0 > rsi1) buyS += 10;
-   if(rsi0 <= 55 && rsi0 >= 30 && rsi0 < rsi1) sellS += 10;
+   if(rsi0 >= 45 && rsi0 <= 70 && rsi0 > rsi1) { buyS += 10;  g_cBuy[4]=true; }
+   if(rsi0 <= 55 && rsi0 >= 30 && rsi0 < rsi1) { sellS += 10; g_cSell[4]=true; }
 
    // 5) MACD histogram (OsMA) acceleration (10)
-   if(os0 > os1) buyS += 10;
-   if(os0 < os1) sellS += 10;
+   if(os0 > os1) { buyS += 10;  g_cBuy[5]=true; }
+   if(os0 < os1) { sellS += 10; g_cSell[5]=true; }
 
    // 6) Candle price action (15): strong body, close near extreme, no exhaustion
    if(range > 0 && atr > 0)
@@ -389,12 +408,12 @@ void CalcScores(const int i,double &buyS,double &sellS,bool &buyTrig,bool &sellT
       bool sane = (body <= 2.0*atr);
       if(c > o)
         {
-         if(sane && body >= 0.4*range && (c-l) >= 0.6*range) buyS += 15;
+         if(sane && body >= 0.4*range && (c-l) >= 0.6*range) { buyS += 15; g_cBuy[6]=true; }
          else buyS += 5;
         }
       if(c < o)
         {
-         if(sane && body >= 0.4*range && (h-c) >= 0.6*range) sellS += 15;
+         if(sane && body >= 0.4*range && (h-c) >= 0.6*range) { sellS += 15; g_cSell[6]=true; }
          else sellS += 5;
         }
      }
@@ -461,6 +480,90 @@ bool FiltersOk(const int i,string &reason)
    return(true);
   }
 
+//+------------------------------------------------------------------+
+//| Stage-2 quality filters                                          |
+//+------------------------------------------------------------------+
+// Don't buy straight into resistance / sell straight into support.
+bool SrOk(const int i,const int dir)
+  {
+   if(InpSrLookback <= 0 || i + InpSrLookback >= Bars)
+      return(true);
+   double atr = iATR(NULL,0,InpAtrFast,i);
+   if(atr <= 0)
+      return(true);
+   int hi = iHighest(NULL,0,MODE_HIGH,InpSrLookback,i+1);
+   int lo = iLowest(NULL,0,MODE_LOW,InpSrLookback,i+1);
+   if(hi < 0 || lo < 0)
+      return(true);
+   double res = High[hi], sup = Low[lo];
+   if(dir > 0 && Close[i] < res && (res - Close[i]) < InpSrAtrMult*atr)
+      return(false);
+   if(dir < 0 && Close[i] > sup && (Close[i] - sup) < InpSrAtrMult*atr)
+      return(false);
+   return(true);
+  }
+
+// Skip exhausted moves: too many same-color candles or a climax candle.
+bool ExhaustionOk(const int i,const int dir)
+  {
+   double atr = iATR(NULL,0,InpAtrFast,i);
+   if(atr > 0 && MathAbs(Close[i]-Open[i]) > 2.2*atr)
+      return(false);
+   if(InpMaxConsecutive <= 0)
+      return(true);
+   int run = 0;
+   for(int j=i; j<Bars && j<i+InpMaxConsecutive+1; j++)
+     {
+      bool bull = Close[j] > Open[j];
+      bool bear = Close[j] < Open[j];
+      if((dir > 0 && bull) || (dir < 0 && bear))
+         run++;
+      else
+         break;
+     }
+   return(run < InpMaxConsecutive);
+  }
+
+// Outcome of a signal on bar j (1 = win, -1 = loss, 0 = draw / unresolved
+// as of bar i). Deterministic from price, so history and live agree.
+int SignalResult(const int j,const int dir,const int i)
+  {
+   int k = j - InpExpiryCandles;           // exit candle
+   if(k < i || j-1 < 0)
+      return(0);
+   double diff = NormalizeDouble(Close[k] - Open[j-1],Digits);
+   if(diff == 0)
+      return(0);
+   if(dir > 0)
+      return((diff > 0) ? 1 : -1);
+   return((diff < 0) ? 1 : -1);
+  }
+
+// Adaptive filter: pause a direction while its recent win rate is poor.
+// Looks only at signals that were already resolved before bar i closed.
+bool SmartOk(const int i,const int dir)
+  {
+   if(!InpSmartFilter || InpSmartWindow < 5)
+      return(true);
+   int w=0, l=0, n=0;
+   int maxScan = MathMin(Bars - 2, i + 800);
+   for(int j=i+1; j<=maxScan && n<InpSmartWindow; j++)
+     {
+      bool hit = (dir > 0) ? (BuyBuf[j] != EMPTY_VALUE) : (SellBuf[j] != EMPTY_VALUE);
+      if(!hit)
+         continue;
+      int r = SignalResult(j,dir,i);
+      if(r == 0)
+         continue;
+      n++;
+      if(r > 0) w++; else l++;
+     }
+   if(n < MathMax(10,InpSmartWindow/2))
+      return(true);                       // not enough evidence yet
+   double wr = 100.0*w/n;
+   return(wr >= InpSmartMinWr);
+  }
+
 bool InCooldown(const int i)
   {
    for(int k=1; k<=InpCooldownBars; k++)
@@ -522,6 +625,7 @@ void UpdateStats()
    g_streak=0; g_bestWin=0; g_worstLoss=0;
    g_last10=""; g_lastSigTime=0; g_lastSigDir=0; g_lastSigScore=0;
    g_lastSigPending=false; g_lastSigEntry=0;
+   ArrayInitialize(g_hW,0); ArrayInitialize(g_hL,0);
 
    int start = MathMin(InpStatsBars,Bars - g_warm - 2);
    datetime dayStart = iTime(NULL,PERIOD_D1,0);
@@ -577,6 +681,7 @@ void UpdateStats()
          g_wins++;
          if(isBuy) g_bWins++; else g_sWins++;
          if(today) g_tWins++;
+         g_hW[TimeHour(Time[i-1])]++;
          g_streak = (g_streak > 0) ? g_streak + 1 : 1;
          g_bestWin = MathMax(g_bestWin,g_streak);
          WinBuf[j] = markPrice;
@@ -587,6 +692,7 @@ void UpdateStats()
          g_losses++;
          if(isBuy) g_bLoss++; else g_sLoss++;
          if(today) g_tLoss++;
+         g_hL[TimeHour(Time[i-1])]++;
          g_streak = (g_streak < 0) ? g_streak - 1 : -1;
          g_worstLoss = MathMax(g_worstLoss,-g_streak);
          LossBuf[j] = markPrice;
@@ -644,6 +750,17 @@ void UpdateLive()
    g_stoch   = iStochastic(NULL,0,InpStochK,InpStochD,InpStochSlowing,MODE_SMA,0,MODE_MAIN,1);
    double atrS = iATR(NULL,0,InpAtrSlow,1);
    g_volRatio = (atrS > 0) ? iATR(NULL,0,InpAtrFast,1)/atrS : 0;
+
+   g_pauseBuy  = !SmartOk(0,1);
+   g_pauseSell = !SmartOk(0,-1);
+
+   int spr = (int)MarketInfo(Symbol(),MODE_SPREAD);
+   if(g_liveReason == "" && InpMaxSpreadPts > 0 && spr > InpMaxSpreadPts)
+      g_liveReason = "High spread (" + IntegerToString(spr) + " pts)";
+
+   // leave checklist flags describing the last CLOSED candle
+   double b1,s1; bool bt1,st1;
+   CalcScores(1,b1,s1,bt1,st1);
   }
 
 //+------------------------------------------------------------------+
@@ -702,7 +819,31 @@ void DrawDashboard()
    int fillW  = (int)MathMax(2,trackW*MathMin(score,100.0)/100.0);
    SetRect("track",lx+6,cy,trackW,5,C_BORDER,C_BORDER);
    SetRect("fill",lx+6,cy,fillW,5,(dir != 0) ? sigClr : C_MUTED,(dir != 0) ? sigClr : C_MUTED);
-   cy = cardTop + cardH + 10;
+   cy = cardTop + cardH + 8;
+
+   //--- setup checklist (last closed candle)
+   int chkDir = (dir != 0) ? dir : ((SafeScore(BuyScoreBuf[1]) >= SafeScore(SellScoreBuf[1])) ? 1 : -1);
+   int crh    = rh - 4;
+   int chkH   = 4*crh + 14;
+   SetRect("chk",x+10,cy,w-20,chkH,C_CARD,C_BORDER);
+   SetLabel("chkcap",lx+6,cy+5,"SETUP CHECKLIST  ·  " + ((chkDir > 0) ? "CALL side" : "PUT side"),C_MUTED,fs-2,"Segoe UI Semibold");
+   int passed = 0;
+   for(int q=0; q<7; q++)
+     {
+      bool ok = (chkDir > 0) ? g_cBuy[q] : g_cSell[q];
+      if(ok) passed++;
+      int col = (q < 4) ? 0 : 1;
+      int row = (q < 4) ? q : q-4;
+      int cx  = lx + 6 + col*(int)(w*0.47);
+      int cyy = cy + 5 + crh*(row+1) - 2;
+      string nm = CHK_NAMES[q];
+      if(q == 1) nm = "Trend " + TfName(InpHtf1);
+      if(q == 2) nm = "Trend " + TfName(InpHtf2);
+      SetLabel("chk"+IntegerToString(q),cx,cyy,(ok ? "✔  " : "✘  ") + nm,ok ? InpCallColor : C_MUTED,fs-1);
+     }
+   SetLabel("chk7",lx+6+(int)(w*0.47),cy+5+crh*4-2,IntegerToString(passed) + " / 7 confirmed",
+            (passed >= 6) ? C_GOLD : C_TEXT,fs-1,"Segoe UI Semibold");
+   cy += chkH + 8;
 
    //--- live preview & status
    string live;
@@ -715,6 +856,10 @@ void DrawDashboard()
    cy += rh;
    Row("status","Status",(g_liveReason == "") ? "Scanning" : g_liveReason,
        (g_liveReason == "") ? C_TEXT : C_WARN,cy,lx,vx,fs);
+   cy += rh;
+   string smart = !InpSmartFilter ? "Off" : ((g_pauseBuy && g_pauseSell) ? "CALL + PUT paused" :
+                  (g_pauseBuy ? "CALL paused (weak recent WR)" : (g_pauseSell ? "PUT paused (weak recent WR)" : "Active · both sides OK")));
+   Row("smart","Smart filter",smart,(g_pauseBuy || g_pauseSell) ? C_WARN : C_TEXT,cy,lx,vx,fs);
    cy += rh;
    Sep("sep1",x,cy,w);
    cy += 10;
@@ -763,6 +908,12 @@ void DrawDashboard()
        (st > 0 ? DoubleToString(100.0*g_sWins/st,0) + "%" : "--"),C_TEXT,cy,lx,vx,fs);
    cy += rh;
    Row("today","Today",IntegerToString(g_tWins) + "W · " + IntegerToString(g_tLoss) + "L",C_TEXT,cy,lx,vx,fs);
+   cy += rh;
+   int hh = TimeHour(TimeCurrent());
+   int hn = g_hW[hh] + g_hL[hh];
+   Row("hour","This hour (" + StringFormat("%02d:00",hh) + ")",
+       (hn > 0 ? DoubleToString(100.0*g_hW[hh]/hn,0) + "%  · " + IntegerToString(g_hW[hh]) + "W " + IntegerToString(g_hL[hh]) + "L" : "no history"),
+       (hn >= 5 && 100.0*g_hW[hh]/hn < be) ? C_WARN : C_TEXT,cy,lx,vx,fs);
    cy += rh;
    string strk = (g_streak > 0) ? "W" + IntegerToString(g_streak) : ((g_streak < 0) ? "L" + IntegerToString(-g_streak) : "--");
    Row("streak","Streak",strk + "  · best W" + IntegerToString(g_bestWin) + " · worst L" + IntegerToString(g_worstLoss),

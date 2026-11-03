@@ -41,7 +41,12 @@ An arrow is printed only when **all** of these are true:
 - volatility is between 0.6× and 2.5× its baseline (this skips dead markets and news spikes);
 - the session filter allows it, and no signal appeared during the cooldown bars.
 
-Signal grades: **70–79 GOOD · 80–89 STRONG · 90–100 PREMIUM**.
+Then three **stage-2 quality filters** must also pass (all use closed data only):
+- **Support/resistance:** no CALL right under a recent swing high, no PUT right above a recent swing low (within 0.8 ATR, 40-bar lookback).
+- **Exhaustion:** no signal after 4+ same-color candles or after a climax candle (body > 2.2 ATR).
+- **Smart filter (adaptive):** if the last 20 resolved CALL (or PUT) trades on this chart won less than 50%, that direction is paused until it recovers. It only looks at trades that were already finished at the time, so history and live behave identically.
+
+Signal grades: **70–79 GOOD · 80–89 STRONG · 90–100 PREMIUM**. Turn on **Premium-only mode** to get only 85+ signals (fewer, higher-quality trades).
 
 ### Why it doesn't repaint
 
@@ -63,9 +68,11 @@ The dashboard's **"Forming candle"** row is a live preview of the candle still o
 
 - Pair, timeframe and a countdown to candle close
 - **Next candle signal**: CALL / PUT / WAIT with a 0–100 confidence meter and grade
+- **Setup checklist**: the 7 confluence components with ✔ / ✘ for the last closed candle, e.g. *6 / 7 confirmed*
+- **Smart filter** status (active, or which direction is paused) and a high-spread warning
 - Live preview of the forming candle, plus filter status (low volatility, spike, outside session)
 - Trend arrows for M5 / M15 / H1, RSI and Stochastic values, volatility ratio, current session
-- **Performance**: win rate, W/L/D counts, break-even win rate for your payout, edge, CALL vs PUT win rate, today's results, streaks, last 10 results, and the last signal (with a running in-profit / in-loss status)
+- **Performance**: win rate, W/L/D counts, break-even win rate for your payout, edge, CALL vs PUT win rate, today's results, win rate for the current hour of the day, streaks, last 10 results, and the last signal (with a running in-profit / in-loss status)
 
 The win-rate tracker enters at the **open** of the candle after the signal and exits at the **close** of the expiry candle. That is how a binary trade actually settles. A close equal to the entry counts as a draw.
 
