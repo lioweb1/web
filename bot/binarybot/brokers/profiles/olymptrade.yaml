@@ -1,0 +1,9 @@
+# Olymp Trade selector profile. VERIFY on your own account; the UI changes.
+trade_url: https://olymptrade.com/platform
+login_timeout_ms: 180000
+amount_format: "{:.0f}"
+selectors:
+  balance: ".balance__value, [data-test='balance']"
+  amount_input: ".deal-amount input, [data-test='amount-input']"
+  call_button: "[data-test='deal-button-up'], .button-up"
+  put_button: "[data-test='deal-button-down'], .button-down"

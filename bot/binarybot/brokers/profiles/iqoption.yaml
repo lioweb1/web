@@ -1,0 +1,9 @@
+# IQ Option selector profile. VERIFY on your own account; the UI changes.
+trade_url: https://iqoption.com/traderoom
+login_timeout_ms: 180000
+amount_format: "{:.0f}"
+selectors:
+  balance: ".balance-info .balance, [data-test-id='balance']"
+  amount_input: ".amount-input input, [data-test-id='amount-input']"
+  call_button: "[data-test-id='call-button'], .call-btn"
+  put_button: "[data-test-id='put-button'], .put-btn"

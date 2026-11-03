@@ -1,0 +1,12 @@
+# Pocket Option selector profile. VERIFY on your own account; the UI changes.
+# Open DevTools on the trade page and adjust selectors if an element is not found.
+trade_url: https://pocketoption.com/en/cabinet/demo-quick-high-low/   # switch to /cabinet/ for real
+login_timeout_ms: 180000
+amount_format: "{:.0f}"
+selectors:
+  balance: ".balance-info-block__balance, .js-balance-demo, .js-balance-real"
+  amount_input: ".block--bet-amount input, .value__val input"
+  call_button: ".btn-call, .switch-state-block__item--call, a.btn.btn-call"
+  put_button: ".btn-put, .switch-state-block__item--put, a.btn.btn-put"
+# Expiry is left at whatever the UI currently shows. Set it manually once
+# (e.g. 1 minute) or add an expiry_js hook that changes it programmatically.

@@ -1,0 +1,9 @@
+# Quotex selector profile. VERIFY on your own account; the UI changes.
+trade_url: https://qxbroker.com/en/demo-trade   # https://qxbroker.com/en/trade for real
+login_timeout_ms: 180000
+amount_format: "{:.0f}"
+selectors:
+  balance: ".usermenu__info-balance, .header__balance"
+  amount_input: ".section-deal__investment input, .input-control__input[name='investment']"
+  call_button: ".call-btn, button.section-deal__button--call"
+  put_button: ".put-btn, button.section-deal__button--put"

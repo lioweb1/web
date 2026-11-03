@@ -1,0 +1,56 @@
+# Copy to config.yaml and edit. ${VAR} is replaced from the environment.
+
+symbol: frxEURUSD        # Deriv symbol for feed/execution. Browser brokers: the chart you opened must match.
+granularity: 60          # 1-minute candles
+expiry_sec: 60           # 1-minute contracts
+history: 300
+
+strategy:
+  strategies: [mean_reversion]       # or [mean_reversion, trend_pullback] (both must agree)
+  min_confidence: 0.6
+  rsi_oversold: 30
+  rsi_overbought: 70
+  bb_period: 20
+  bb_std: 2.0
+  ema_trend: 50
+  max_trend_slope_atr: 1.5
+
+risk:
+  stake_pct: 1.0
+  min_stake: 1
+  max_stake: 50
+  max_daily_loss_pct: 5
+  max_daily_trades: 20
+  max_consecutive_losses: 3
+  cooldown_after_loss_sec: 180
+  min_confidence: 0.6
+  trade_hours_utc: {start: 7, end: 20}
+  daily_profit_target_pct: 4
+
+# --- choose ONE broker -----------------------------------------------------
+broker:
+  kind: paper              # paper | deriv | browser
+  paper:
+    start_balance: 1000
+    payout: 0.85
+  deriv:
+    token: ${DERIV_TOKEN}  # api.deriv.com -> create token with Trade scope. Demo account = VRTC login.
+    app_id: 1089
+    currency: USD
+  browser:
+    profile: pocketoption  # pocketoption | quotex | iqoption | olymptrade (see brokers/profiles)
+    user_data_dir: browser-profile
+    headless: false
+    settle_grace_sec: 8
+
+# Candle feed, used when the broker cannot stream candles (paper, browser).
+data:
+  kind: deriv              # deriv | binance
+  binance:
+    base_url: https://api.binance.com
+
+telegram:
+  token: ${TELEGRAM_BOT_TOKEN}
+  chat_id: ${TELEGRAM_CHAT_ID}
+
+log_file: trades.log
