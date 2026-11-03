@@ -4,8 +4,8 @@ import { z } from "zod";
 import { action, simpleAction, zArr, zBool, zUuid } from "@/lib/action";
 import { enqueue } from "@/lib/jobs/queue";
 import { audit } from "@/lib/services/audit";
-import { getConnectionDef, saveConnection } from "@/lib/social/accounts";
-import { regenerateReply, sendReply, updateComment } from "@/lib/social/engage";
+import { GOOGLE_ACCOUNT, getConnectionDef, removeConnectionSecrets, saveConnection } from "@/lib/social/accounts";
+import { regenerateReply, sendReply, syncSeo, updateComment } from "@/lib/social/engage";
 import { parseLocalDateTime } from "@/lib/social/schedule";
 import { fmtSlot } from "@/lib/social/format";
 import { createComposerPost, prepareVideo, deletePost, generateFromText, getAutopilot, publishNow, queuePublish, regeneratePost, saveAutopilot, setPostStatus, testConnection, unschedulePost, updatePost } from "@/lib/social/service";
@@ -69,8 +69,9 @@ export const saveConnectionAction = action({ schema: connSchema, role: "admin" }
     if (v) secrets[f.key] = v;
     if (str(`secret_${f.key}__clear`) === "on") clear.push(f.key);
   }
-  // AI writers have no on/off switch: the one selected in settings is used.
-  await saveConnection(ctx.workspace.id, def, { enabled: def.kind === "ai" || input.enabled === "on", settings, secrets, clear });
+  for (const f of def.settingFields) if (f.type === "checkbox") settings[f.key] = str(`setting_${f.key}`) === "on" ? "1" : "0";
+  // AI writers and the Google account have no on/off switch.
+  await saveConnection(ctx.workspace.id, def, { enabled: def.kind === "ai" || def.id === "google" || input.enabled === "on", settings, secrets, clear });
   await audit({ workspaceId: ctx.workspace.id, userId: ctx.user.id, action: "social.connection.update", targetType: "integration", targetId: `${def.kind}:${def.id}`, metadata: { settingsChanged: Object.keys(settings), secretsChanged: Object.keys(secrets) } });
   revalidate();
   return { message: `${def.name} saved. Run a connection test to verify it.` };
@@ -235,4 +236,15 @@ export const composeAction = action(
 export const makeVideoAction = simpleAction({ schema: z.object({ postId: zUuid }), role: "member" }, async (ctx, i) => {
   await prepareVideo(ctx.workspace.id, i.postId);
   revalidate();
+});
+
+export const disconnectGoogleAction = simpleAction({ schema: z.object({}), role: "admin", audit: "social.google.disconnect" }, async (ctx) => {
+  await removeConnectionSecrets(ctx.workspace.id, GOOGLE_ACCOUNT, ["refreshToken", "email", "scopes"]);
+  revalidate();
+});
+
+export const syncSeoNowAction = action({ schema: z.object({}), role: "member" }, async (ctx) => {
+  const s = await syncSeo(ctx.workspace.id);
+  revalidate();
+  return { message: `Search Console: ${s.top.length} top queries, ${s.opportunities.length} keyword opportunities (${s.from} – ${s.to}).` };
 });

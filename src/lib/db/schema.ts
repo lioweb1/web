@@ -795,8 +795,13 @@ export const socialAutopilots = pgTable("social_autopilots", {
   metricsSyncedAt: timestamp("metrics_synced_at", { withTimezone: true }),
   /** Telegram getUpdates offset for draft approvals. */
   telegramOffset: bigint("telegram_offset", { mode: "number" }),
+  /** Latest Search Console queries (see lib/social/google.ts SeoInsights). */
+  seoInsights: jsonb("seo_insights").$type<{ site: string; from: string; to: string; top: SeoQueryRow[]; opportunities: SeoQueryRow[] }>(),
+  seoSyncedAt: timestamp("seo_synced_at", { withTimezone: true }),
   ...timestamps,
 });
+
+export type SeoQueryRow = { query: string; clicks: number; impressions: number; ctr: number; position: number };
 
 export type SocialMetrics = { likes: number; comments: number; shares: number; views?: number | null };
 

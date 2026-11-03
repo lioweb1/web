@@ -39,7 +39,7 @@ const generatedSchema = z.object({
 
 type Brand = Pick<SocialAutopilotConfig, "brandName" | "brandVoice" | "language" | "keywords" | "link">;
 
-export function systemPrompt(brand: Brand, opts: { winningHooks?: string[]; article?: boolean } = {}) {
+export function systemPrompt(brand: Brand, opts: { winningHooks?: string[]; article?: boolean; seoKeywords?: string[] } = {}) {
   return [
     "You are an elite viral copywriter and social SEO specialist for the brand below. Your posts stop the scroll, get clicks and rank in platform search.",
     `Brand: ${brand.brandName || "(unnamed)"}`,
@@ -67,6 +67,7 @@ export function systemPrompt(brand: Brand, opts: { winningHooks?: string[]; arti
     "- The source item is only inspiration for the TOPIC. Write completely original text: never copy its sentences, never quote or name its author, never pretend to be them.",
     "- Clickbait is fine, lies are not: no invented statistics or quotes, no fake news, no guaranteed income or health claims, nothing hateful, harassing or sexual. The post must deliver on what the hook promises.",
     "- Mention the brand only where it genuinely fits.",
+    opts.seoKeywords?.length ? `\nReal Google searches this site already shows up for (from Search Console). When the topic fits, pick one of these as primaryKeyword, because ranking higher for them brings the fastest traffic: ${opts.seoKeywords.map((k) => `"${k}"`).join(", ")}` : "",
     opts.winningHooks?.length ? `\nHooks that performed best with this audience (learn the style, do not copy): ${opts.winningHooks.map((h) => `"${h}"`).join("; ")}` : "",
     "",
     "Return ONLY a JSON object with these keys:",
@@ -226,7 +227,7 @@ export async function complete(http: HttpClient, providerId: string, conn: Conne
   }
 }
 
-export async function generatePost(http: HttpClient, providerId: string, conn: Connection, brand: Brand, trend: TrendInput, opts: { winningHooks?: string[]; article?: boolean } = {}): Promise<GeneratedPost> {
+export async function generatePost(http: HttpClient, providerId: string, conn: Connection, brand: Brand, trend: TrendInput, opts: { winningHooks?: string[]; article?: boolean; seoKeywords?: string[] } = {}): Promise<GeneratedPost> {
   const text = await complete(http, providerId, conn, systemPrompt(brand, opts), userPrompt(trend));
   return parseGenerated(text, brand.keywords);
 }

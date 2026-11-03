@@ -8,6 +8,7 @@ import { notify } from "@/lib/notifications/notify";
 import { ProviderHttpError } from "@/lib/providers/http";
 import { AI_PROVIDERS, SOCIAL_PLATFORMS, getConnection, getConnectionDef, recordConnectionStatus, updateConnectionSecrets, type SocialConnectionDef } from "./accounts";
 import { ensureVideo } from "./video";
+import { googleAccount, logPostToSheet, submitSitemap } from "./google";
 import { generatePost, testAi, type TrendInput } from "./ai";
 import { engagementOf, type PostContent } from "./publish";
 import { BLOG_PLATFORMS, PUBLISHERS, VIDEO_PLATFORMS, testPlatform } from "./channels";
@@ -70,6 +71,8 @@ export async function getAutopilot(workspaceId: string) {
     nextRunAt: row?.nextRunAt ?? null,
     engageSyncedAt: row?.engageSyncedAt ?? null,
     metricsSyncedAt: row?.metricsSyncedAt ?? null,
+    seoInsights: row?.seoInsights ?? null,
+    seoSyncedAt: row?.seoSyncedAt ?? null,
   };
 }
 
@@ -137,7 +140,7 @@ export async function winningHooks(workspaceId: string, limit = 3) {
 async function writePost(workspaceId: string, cfg: SocialAutopilotConfig, trend: TrendInput) {
   const { def, conn } = await requireAi(workspaceId, cfg.aiProvider);
   try {
-    const gen = await generatePost(httpClient(), def.id, conn, cfg, trend, { winningHooks: await winningHooks(workspaceId), article: cfg.platforms.some((x) => BLOG_PLATFORMS.includes(x)) });
+    const gen = await generatePost(httpClient(), def.id, conn, cfg, trend, { winningHooks: await winningHooks(workspaceId), article: cfg.platforms.some((x) => BLOG_PLATFORMS.includes(x)), seoKeywords: await seoKeywords(workspaceId) });
     await recordConnectionStatus(workspaceId, def, { ok: true, message: "ok" });
     return {
       hook: gen.hooks[0],
@@ -214,7 +217,8 @@ export async function runScan(workspaceId: string, now = new Date()) {
     if (!cfg.keywords.length) throw new SocialConfigError("Add niche keywords before scanning");
     await requireAi(workspaceId, cfg.aiProvider);
     const bsky = cfg.sources.includes("bluesky") ? await getConnection(workspaceId, getConnectionDef("platform", "bluesky")!) : null;
-    const trends = await fetchTrends({ ...deps(), bluesky: bsky }, cfg, now);
+    const google = cfg.sources.includes("youtube") ? await googleAccount(workspaceId) : null;
+    const trends = await fetchTrends({ ...deps(), bluesky: bsky, google }, cfg, now);
     stats.fetched = trends.fetched;
     errors.push(...trends.errors);
     const used = new Set(
@@ -456,6 +460,7 @@ export async function publishPost(workspaceId: string, postId: string, opts: { f
       .set({ results, status: failed.length && !final ? "publishing" : status, publishedAt: okCount && !p.publishedAt ? new Date() : p.publishedAt, updatedAt: new Date() })
       .where(eq(schema.socialPosts.id, postId)),
   );
+  if (!failed.length || final) await afterPublish(workspaceId, postId, p.platforms.filter((x) => results[x]?.ok && !p.results[x]?.ok), p.link ?? config.link);
   if (failed.length) {
     if (final) await notify(workspaceId, { type: "job_failed", title: `Social post failed on ${failed.join(", ")}`, body: failed.map((f) => `${f}: ${results[f]?.error}`).join("\n").slice(0, 500), dedupeKey: `social:fail:${postId}` });
     const msg = `Publishing failed on ${failed.map((f) => `${f} (${results[f]?.error})`).join("; ")}`;
@@ -632,4 +637,29 @@ export async function prepareVideo(workspaceId: string, postId: string) {
   const p = await getPost(workspaceId, postId);
   const { config } = await getAutopilot(workspaceId);
   return ensureVideo(workspaceId, p, config, p.link ?? config.link);
+}
+
+/** Search Console queries to steer the AI's SEO keyword (opportunities first). */
+export async function seoKeywords(workspaceId: string) {
+  const [row] = await withTenant(workspaceId, (tx) => tx.select({ seo: schema.socialAutopilots.seoInsights }).from(schema.socialAutopilots).where(eq(schema.socialAutopilots.workspaceId, workspaceId)));
+  const seo = row?.seo;
+  if (!seo) return [];
+  return [...new Set([...seo.opportunities, ...seo.top].map((q) => q.query))].slice(0, 12);
+}
+
+/**
+ * Google extras after a publish: log the post to the report sheet and resubmit the sitemap
+ * when a blog post went live. Best effort: a failure here never fails the publish.
+ */
+async function afterPublish(workspaceId: string, postId: string, newlyPublished: string[], link: string) {
+  if (!newlyPublished.length) return;
+  try {
+    const google = await googleAccount(workspaceId);
+    if (!google) return;
+    const d = { http: httpClient() };
+    if (google.settings.sheetsLog === "1") await logPostToSheet(workspaceId, d, google, await getPost(workspaceId, postId), link);
+    if (newlyPublished.some((x) => BLOG_PLATFORMS.includes(x))) await submitSitemap(d, google);
+  } catch (e) {
+    console.error(`[social] Google follow-up for post ${postId} failed: ${e instanceof Error ? e.message : String(e)}`);
+  }
 }

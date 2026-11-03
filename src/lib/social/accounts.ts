@@ -251,17 +251,54 @@ export const SOCIAL_PLATFORMS: SocialConnectionDef[] = [
   },
 ];
 
-export const ALL_CONNECTIONS = [...AI_PROVIDERS, ...SOCIAL_PLATFORMS];
+/**
+ * One Google sign-in shared by Blogger, YouTube, Business Profile, Search Console and Sheets.
+ * Its tokens live in secrets (refreshToken, email, spreadsheetId) so saving the form keeps them.
+ */
+export const GOOGLE_ACCOUNT: SocialConnectionDef = {
+  id: "google",
+  kind: "platform",
+  name: "Google account",
+  description: "Sign in once with Google to power Blogger, YouTube Shorts, Google Business Profile, Search Console SEO keywords, YouTube trends and the Google Sheets report. Create an OAuth client (type: Web application) in Google Cloud and add the redirect URI shown below.",
+  pricingNote: "Free (Google APIs; enable each API in your Google Cloud project).",
+  docsUrl: "https://developers.google.com/identity/protocols/oauth2/web-server",
+  secretFields: [
+    { key: "clientId", label: "OAuth client ID", type: "secret", help: "Or set GOOGLE_CLIENT_ID on the server." },
+    { key: "clientSecret", label: "OAuth client secret", type: "secret", help: "Or set GOOGLE_CLIENT_SECRET on the server." },
+  ],
+  settingFields: [
+    { key: "searchConsoleSite", label: "Search Console property", type: "text", help: "e.g. sc-domain:example.com or https://example.com/" },
+    { key: "sitemapUrl", label: "Sitemap URL", type: "text", help: "Resubmitted to Search Console after blog posts go live, e.g. https://example.com/sitemap.xml" },
+    { key: "sheetsLog", label: "Log published posts and metrics to a Google Sheet", type: "checkbox" },
+  ],
+};
+
+/** Platforms that can use the shared Google sign-in instead of their own OAuth fields. */
+export const GOOGLE_PLATFORMS = ["blogger", "youtube", "google_business"];
+
+export const ALL_CONNECTIONS = [...AI_PROVIDERS, ...SOCIAL_PLATFORMS, GOOGLE_ACCOUNT];
 
 export function connectionKey(def: Pick<SocialConnectionDef, "kind" | "id">) {
   return `${def.kind === "ai" ? "ai" : "social"}:${def.id}`;
 }
 
 export function getConnectionDef(kind: "ai" | "platform", id: string) {
+  if (kind === "platform" && id === "google") return GOOGLE_ACCOUNT;
   return (kind === "ai" ? AI_PROVIDERS : SOCIAL_PLATFORMS).find((d) => d.id === id);
 }
 
-export type Connection = { secrets: Record<string, string>; settings: Record<string, string>; enabled: boolean; configured: boolean };
+/** OAuth client for the shared Google sign-in: saved in the app, else server env. */
+export function googleClient(secrets: Record<string, string>) {
+  return { clientId: secrets.clientId || process.env.GOOGLE_CLIENT_ID || "", clientSecret: secrets.clientSecret || process.env.GOOGLE_CLIENT_SECRET || "" };
+}
+
+/** Fill a Google platform's missing OAuth fields from the shared Google sign-in. */
+function withSharedGoogle(def: SocialConnectionDef, c: { secrets: Record<string, string>; settings: Record<string, string> }, google: { secrets: Record<string, string> } | null) {
+  if (!GOOGLE_PLATFORMS.includes(def.id) || c.secrets.refreshToken || !google?.secrets.refreshToken) return { ...c, sharedGoogle: false };
+  return { ...c, secrets: { ...c.secrets, ...googleClient(google.secrets), refreshToken: google.secrets.refreshToken }, sharedGoogle: true };
+}
+
+export type Connection = { secrets: Record<string, string>; settings: Record<string, string>; enabled: boolean; configured: boolean; sharedGoogle?: boolean };
 
 export type ConnectionView = {
   id: string;
@@ -273,6 +310,10 @@ export type ConnectionView = {
   lastError: string | null;
   settings: Record<string, string>;
   maskedSecrets: Record<string, string | null>;
+  /** Uses the shared Google sign-in. */
+  sharedGoogle: boolean;
+  /** Google account only: signed-in email. */
+  email?: string | null;
 };
 
 function decode(row: { encryptedSecrets: string | null; settings: Record<string, unknown> } | null) {
@@ -286,16 +327,19 @@ function isConfigured(def: SocialConnectionDef, c: { secrets: Record<string, str
 }
 
 export async function getConnection(workspaceId: string, def: SocialConnectionDef): Promise<Connection> {
-  const row = await withTenant(workspaceId, (tx) => getIntegrationRow(tx, workspaceId, connectionKey(def)));
-  const c = decode(row);
+  const [row, googleRow] = await withTenant(workspaceId, async (tx) => [await getIntegrationRow(tx, workspaceId, connectionKey(def)), GOOGLE_PLATFORMS.includes(def.id) ? await getIntegrationRow(tx, workspaceId, connectionKey(GOOGLE_ACCOUNT)) : null] as const);
+  const c = withSharedGoogle(def, decode(row), googleRow ? decode(googleRow) : null);
   return { ...c, enabled: row?.enabled ?? false, configured: isConfigured(def, c) };
 }
 
 export async function listConnections(workspaceId: string): Promise<ConnectionView[]> {
   const rows = await withTenant(workspaceId, (tx) => tx.select().from(schema.integrations).where(eq(schema.integrations.workspaceId, workspaceId)));
+  const googleRow = rows.find((r) => r.providerId === connectionKey(GOOGLE_ACCOUNT)) ?? null;
+  const google = googleRow ? decode(googleRow) : null;
   return ALL_CONNECTIONS.map((def) => {
     const row = rows.find((r) => r.providerId === connectionKey(def)) ?? null;
-    const c = decode(row);
+    const own = decode(row);
+    const c = withSharedGoogle(def, own, google);
     return {
       id: def.id,
       kind: def.kind,
@@ -305,7 +349,9 @@ export async function listConnections(workspaceId: string): Promise<ConnectionVi
       lastTestedAt: row?.lastTestedAt ?? null,
       lastError: row?.lastError ?? null,
       settings: c.settings,
-      maskedSecrets: Object.fromEntries(Object.entries(c.secrets).map(([k, v]) => [k, maskSecret(v)])),
+      maskedSecrets: Object.fromEntries(Object.entries(own.secrets).filter(([k]) => def.secretFields.some((f) => f.key === k)).map(([k, v]) => [k, maskSecret(v)])),
+      sharedGoogle: c.sharedGoogle,
+      ...(def === GOOGLE_ACCOUNT ? { configured: !!own.secrets.refreshToken, email: own.secrets.email ?? null } : {}),
     };
   });
 }
@@ -350,8 +396,20 @@ export async function recordConnectionStatus(workspaceId: string, def: SocialCon
 export async function updateConnectionSecrets(workspaceId: string, def: SocialConnectionDef, patch: Record<string, string>) {
   await withTenant(workspaceId, async (tx) => {
     const existing = await getIntegrationRow(tx, workspaceId, connectionKey(def));
+    const { secrets } = decode(existing);
+    const encryptedSecrets = encryptSecret(JSON.stringify({ ...secrets, ...patch }));
+    if (existing) await tx.update(schema.integrations).set({ encryptedSecrets, updatedAt: new Date() }).where(eq(schema.integrations.id, existing.id));
+    else await tx.insert(schema.integrations).values({ workspaceId, providerId: connectionKey(def), enabled: true, encryptedSecrets });
+  });
+}
+
+/** Remove keys from a connection's secrets (e.g. disconnect the Google sign-in). */
+export async function removeConnectionSecrets(workspaceId: string, def: SocialConnectionDef, keys: string[]) {
+  await withTenant(workspaceId, async (tx) => {
+    const existing = await getIntegrationRow(tx, workspaceId, connectionKey(def));
     if (!existing) return;
     const { secrets } = decode(existing);
-    await tx.update(schema.integrations).set({ encryptedSecrets: encryptSecret(JSON.stringify({ ...secrets, ...patch })), updatedAt: new Date() }).where(eq(schema.integrations.id, existing.id));
+    for (const k of keys) delete secrets[k];
+    await tx.update(schema.integrations).set({ encryptedSecrets: Object.keys(secrets).length ? encryptSecret(JSON.stringify(secrets)) : null, connectionStatus: "untested", updatedAt: new Date() }).where(eq(schema.integrations.id, existing.id));
   });
 }

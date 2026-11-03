@@ -119,7 +119,13 @@ Open *Social autopilot → Settings & connections*.
 9. **YouTube Shorts and TikTok:** the post's images, or the branded card if there are none, become a 1080×1920 slideshow MP4. The hook is on the first slide and the CTA on the last, with a slow zoom, fades and a silent audio track. It is rendered with the bundled ffmpeg (`@ffmpeg-installer/ffmpeg`; set `FFMPEG_PATH` to use your own). Preview it with *Preview Shorts/TikTok video* on a post.
    - **YouTube:** uploads the video as a Short. Uploads from an unverified Google app stay private, and the default API quota allows about 6 uploads a day.
    - **TikTok:** uses the Content Posting API and the creator's allowed privacy levels. Posts are private until TikTok audits your app. Rotated refresh tokens are saved automatically.
-10. **Image cards:** branded 1080×1080 JPEG cards are served from `APP_URL/api/social/image/…` (signed URLs). Facebook, Instagram and Threads fetch them, so `APP_URL` must be a public HTTPS address. Bangla text uses Noto Sans Bengali.
+10. **Sign in with Google:** one Google sign-in powers Blogger, YouTube Shorts and Business Profile, so you don't need to paste refresh tokens.
+    - **Search Console:** the queries your site already ranks for are fetched daily. Opportunities (many impressions, positions 5–20, low CTR) go into the AI prompt as SEO keywords and appear on *Analytics*. The sitemap is resubmitted after blog posts go live.
+    - **YouTube trends:** a trend source that returns the most-viewed new videos for your keywords.
+    - **Google Sheets:** a report with every published post and its links. A *Metrics* tab is refreshed with likes, comments, shares and views. It uses the `drive.file` scope, so the app can only see the sheet it creates.
+    - **Setup:** in Google Cloud, enable the Blogger, YouTube Data, Search Console and Google Sheets APIs (plus Business Profile if you are approved). Create a *Web application* OAuth client with the redirect URI `APP_URL/api/social/google/callback` and add yourself as a test user. Then paste the client ID and secret, or set `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`, and click *Sign in with Google*.
+    - **Gemini:** still a separate AI writer option with its own free API key.
+11. **Image cards:** branded 1080×1080 JPEG cards are served from `APP_URL/api/social/image/…` (signed URLs). Facebook, Instagram and Threads fetch them, so `APP_URL` must be a public HTTPS address. Bangla text uses Noto Sans Bengali.
 
 X (Twitter) is not supported because its API charges for posting, and automating it outside the API breaks its rules. Nothing in the autopilot scrapes or logs in to a social network's website.
 
@@ -141,6 +147,7 @@ Set the `SMTP_*` variables. Any SMTP server works, for example a Gmail account w
 | `OVERPASS_API_URL`, `NOMINATIM_API_URL` | no | Point to self-hosted instances for heavy use. |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM` | no | Email notifications. |
 | `OLLAMA_URL` | no | Self-hosted Ollama server for the social autopilot AI writer, e.g. `http://localhost:11434`. |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | no | OAuth client for “Sign in with Google” (can also be entered in the app). |
 | `FFMPEG_PATH` | no | ffmpeg binary for Shorts/TikTok slideshow videos (default: bundled `@ffmpeg-installer/ffmpeg`, then `ffmpeg` on PATH). |
 | `META_GRAPH_VERSION` | no | Facebook/Instagram Graph API version for social publishing (default `v23.0`). |
 | `CRON_SECRET` | no | Protects `POST /api/cron/tick` when you use an external cron instead of the worker. |

@@ -17,7 +17,7 @@ export default async function SocialAnalyticsPage({ searchParams }: { searchPara
   const ws = ctx.workspace.id;
   const sp = await searchParams;
   const days = [7, 30, 90].includes(Number(sp.range)) ? Number(sp.range) : 30;
-  const { config, metricsSyncedAt } = await getAutopilot(ws);
+  const { config, metricsSyncedAt, seoInsights, seoSyncedAt } = await getAutopilot(ws);
   const [a, cc] = await Promise.all([socialAnalytics(ws, days, config.timezone), commentCounts(ws)]);
   const t = a.totals;
   const v = a.variants;
@@ -82,6 +82,47 @@ export default async function SocialAnalyticsPage({ searchParams }: { searchPara
           </CardBody>
         </Card>
       </div>
+      <Card className="mb-6">
+        <CardHeader
+          title="Google Search Console"
+          description={seoInsights ? `${seoInsights.site} · ${seoInsights.from} – ${seoInsights.to}${seoSyncedAt ? ` · updated ${fmtSlot(seoSyncedAt, config.timezone)}` : ""}. Opportunities (positions 5–20, low CTR) are sent to the AI as SEO keywords.` : "Sign in with Google and set your Search Console property in Settings to see which searches bring people to your site."}
+        />
+        {seoInsights ? (
+          <div className="grid gap-4 p-4 lg:grid-cols-2">
+            {([["Keyword opportunities", seoInsights.opportunities], ["Top queries", seoInsights.top]] as const).map(([label, rows]) => (
+              <div key={label}>
+                <p className="mb-2 text-xs font-medium text-muted">{label}</p>
+                {rows.length ? (
+                  <Table>
+                    <THead>
+                      <tr>
+                        <TH>Query</TH>
+                        <TH className="text-right">Clicks</TH>
+                        <TH className="text-right">Impr.</TH>
+                        <TH className="text-right">CTR</TH>
+                        <TH className="text-right">Pos.</TH>
+                      </tr>
+                    </THead>
+                    <tbody>
+                      {rows.slice(0, 10).map((q) => (
+                        <TR key={q.query}>
+                          <TD>{q.query}</TD>
+                          <TD className="text-right tabular">{q.clicks}</TD>
+                          <TD className="text-right tabular">{q.impressions}</TD>
+                          <TD className="text-right tabular">{q.ctr}%</TD>
+                          <TD className="text-right tabular">{q.position}</TD>
+                        </TR>
+                      ))}
+                    </tbody>
+                  </Table>
+                ) : (
+                  <p className="text-sm text-muted">None yet.</p>
+                )}
+              </div>
+            ))}
+          </div>
+        ) : null}
+      </Card>
       <Card>
         <CardHeader title="Top posts" />
         <Table>

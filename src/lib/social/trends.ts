@@ -4,6 +4,7 @@ import { safeFetch, type Resolver } from "@/lib/analysis/net";
 import { sha256 } from "@/lib/security/crypto";
 import type { SocialAutopilotConfig } from "@/lib/db/schema";
 import { blueskySession } from "./publish";
+import { youtubeTrends } from "./google";
 import type { Connection } from "./accounts";
 
 /** Free, official trend sources. Nothing here logs in to or scrapes a social network's website. */
@@ -12,6 +13,7 @@ export const TREND_SOURCES = [
   { id: "google_news", name: "Google News", note: "Public search RSS feed. No key." },
   { id: "reddit", name: "Reddit", note: "Public subreddit RSS feeds. No key." },
   { id: "bluesky", name: "Bluesky", note: "Post search. Uses your Bluesky connection." },
+  { id: "youtube", name: "YouTube", note: "Most-viewed new videos. Uses Sign in with Google." },
   { id: "rss", name: "Your RSS feeds", note: "Any blogs or news sites you list." },
 ] as const;
 
@@ -26,7 +28,7 @@ export type TrendItem = {
   engagement: number;
 };
 
-export type TrendDeps = { http: HttpClient; resolve: Resolver; bluesky?: Connection | null };
+export type TrendDeps = { http: HttpClient; resolve: Resolver; bluesky?: Connection | null; google?: Connection | null };
 
 const strip = (s: string | null | undefined) => (s ?? "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
 
@@ -128,6 +130,10 @@ export async function fetchTrends(d: TrendDeps, cfg: SocialAutopilotConfig, now 
   await run("google_news", () => googleNews(d, cfg.keywords));
   await run("reddit", () => reddit(d, cfg.subreddits, cfg.keywords));
   await run("bluesky", () => bluesky(d, cfg.keywords, since));
+  await run("youtube", async () => {
+    if (!d.google) throw new Error("Sign in with Google (Social autopilot → Settings) to use YouTube trends");
+    return youtubeTrends(d, d.google, cfg.keywords, since);
+  });
   await run("rss", async () => {
     const all: TrendItem[] = [];
     for (const f of cfg.feeds.slice(0, 20)) all.push(...(await feedItems(d, "rss", f, { safe: true })));

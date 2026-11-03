@@ -6,12 +6,12 @@ import { SubmitButton, FormMessage } from "@/components/ui/form";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import type { SocialAutopilotConfig } from "@/lib/db/schema";
-import { generateAction, reschedulePostAction, saveAutopilotAction, saveConnectionAction, sendReplyAction, testConnectionAction, updatePostAction } from "./actions";
+import { generateAction, syncSeoNowAction, reschedulePostAction, saveAutopilotAction, saveConnectionAction, sendReplyAction, testConnectionAction, updatePostAction } from "./actions";
 
 type FieldView = { key: string; label: string; type: "secret" | "text" | "textarea" | "checkbox"; help?: string; required?: boolean };
 type Option = { id: string; name: string; note?: string; status?: string };
 
-export function ConnectionForm({ kind, id, enabled, settingFields, secretFields, settings, masked, canEdit }: { kind: "ai" | "platform"; id: string; enabled: boolean; settingFields: FieldView[]; secretFields: FieldView[]; settings: Record<string, string>; masked: Record<string, string | null>; canEdit: boolean }) {
+export function ConnectionForm({ kind, id, enabled, settingFields, secretFields, settings, masked, canEdit, optionalSecrets, hideTest }: { kind: "ai" | "platform"; id: string; enabled: boolean; settingFields: FieldView[]; secretFields: FieldView[]; settings: Record<string, string>; masked: Record<string, string | null>; canEdit: boolean; optionalSecrets?: boolean; hideTest?: boolean }) {
   const [saveState, save] = useActionState(saveConnectionAction, null);
   const [testState, test] = useActionState(testConnectionAction, null);
   return (
@@ -20,18 +20,22 @@ export function ConnectionForm({ kind, id, enabled, settingFields, secretFields,
         <input type="hidden" name="kind" value={kind} />
         <input type="hidden" name="id" value={id} />
         <fieldset disabled={!canEdit} className="space-y-3">
-          {kind === "platform" ? <Checkbox name="enabled" defaultChecked={enabled} label="Enabled" /> : null}
+          {kind === "platform" && id !== "google" ? <Checkbox name="enabled" defaultChecked={enabled} label="Enabled" /> : null}
           {secretFields.map((f) => (
-            <Field key={f.key} label={`${f.label}${f.required ? " *" : ""}`} htmlFor={`${id}-${f.key}`} hint={f.help}>
+            <Field key={f.key} label={`${f.label}${f.required && !optionalSecrets ? " *" : ""}`} htmlFor={`${id}-${f.key}`} hint={optionalSecrets ? "Not needed: this uses your Google sign-in." : f.help}>
               <Input id={`${id}-${f.key}`} name={`secret_${f.key}`} type="password" autoComplete="off" placeholder={masked[f.key] ? `Saved (${masked[f.key]}) — leave blank to keep` : "Not set"} />
               {masked[f.key] ? <Checkbox name={`secret_${f.key}__clear`} label={<span className="text-xs text-muted">Remove saved value</span>} /> : null}
             </Field>
           ))}
-          {settingFields.map((f) => (
-            <Field key={f.key} label={`${f.label}${f.required ? " *" : ""}`} htmlFor={`${id}-s-${f.key}`} hint={f.help}>
-              <Input id={`${id}-s-${f.key}`} name={`setting_${f.key}`} defaultValue={settings[f.key] ?? ""} />
-            </Field>
-          ))}
+          {settingFields.map((f) =>
+            f.type === "checkbox" ? (
+              <Checkbox key={f.key} name={`setting_${f.key}`} defaultChecked={settings[f.key] === "1"} label={f.label} />
+            ) : (
+              <Field key={f.key} label={`${f.label}${f.required ? " *" : ""}`} htmlFor={`${id}-s-${f.key}`} hint={f.help}>
+                <Input id={`${id}-s-${f.key}`} name={`setting_${f.key}`} defaultValue={settings[f.key] ?? ""} />
+              </Field>
+            ),
+          )}
         </fieldset>
         <FormMessage state={saveState} />
         {canEdit ? (
@@ -42,7 +46,7 @@ export function ConnectionForm({ kind, id, enabled, settingFields, secretFields,
           <p className="text-xs text-muted">Only workspace admins can change connections.</p>
         )}
       </form>
-      {canEdit ? (
+      {canEdit && !hideTest ? (
         <form action={test} className="space-y-2">
           <input type="hidden" name="kind" value={kind} />
           <input type="hidden" name="id" value={id} />
@@ -395,5 +399,17 @@ export function CopyButton({ text, label = "Copy" }: { text: string; label?: str
       {done ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
       {done ? "Copied" : label}
     </Button>
+  );
+}
+
+export function SeoSyncButton() {
+  const [state, act] = useActionState(syncSeoNowAction, null);
+  return (
+    <form action={act} className="space-y-2">
+      <SubmitButton size="sm" variant="secondary" pendingText="Fetching…">
+        Fetch Search Console keywords now
+      </SubmitButton>
+      <FormMessage state={state} />
+    </form>
   );
 }

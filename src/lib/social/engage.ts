@@ -7,9 +7,25 @@ import { getConnection, getConnectionDef, recordConnectionStatus, SOCIAL_PLATFOR
 import { generateReply } from "./ai";
 import { COMMENT_FETCHERS, ENGAGE_PLATFORMS, REPLIERS, composeText, engagementOf } from "./publish";
 import { METRICS_FETCHERS } from "./channels";
-import { deps, getAutopilot, postContent, requireAi, SocialConfigError, type Post } from "./service";
+import { DEFAULT_CONFIG, deps, getAutopilot, postContent, requireAi, SocialConfigError, type Post } from "./service";
 import { sendCommentForApproval } from "./telegram-notify";
 import { zonedParts } from "./schedule";
+import { googleAccount, searchConsoleInsights, writeMetricsSheet } from "./google";
+import type { Connection } from "./accounts";
+
+/** Fetch Search Console queries and store them for the prompt and the analytics page. */
+export async function syncSeo(workspaceId: string, google?: Connection | null, now = new Date()) {
+  const conn = google ?? (await googleAccount(workspaceId));
+  if (!conn) throw new SocialConfigError("Sign in with Google first");
+  const insights = await searchConsoleInsights({ http: httpClient() }, conn, now);
+  await withTenant(workspaceId, (tx) =>
+    tx
+      .insert(schema.socialAutopilots)
+      .values({ workspaceId, config: DEFAULT_CONFIG, seoInsights: insights, seoSyncedAt: now })
+      .onConflictDoUpdate({ target: schema.socialAutopilots.workspaceId, set: { seoInsights: insights, seoSyncedAt: now } }),
+  );
+  return insights;
+}
 
 export type Comment = typeof schema.socialComments.$inferSelect;
 
@@ -47,7 +63,7 @@ async function draftReply(workspaceId: string, post: Post, c: Comment) {
 export async function syncEngagement(workspaceId: string, now = new Date()) {
   const ap = await getAutopilot(workspaceId);
   const cfg = ap.config;
-  const stats = { checked: 0, newComments: 0, drafted: 0, replied: 0, skipped: 0, metricsUpdated: 0, errors: 0 };
+  const stats = { checked: 0, newComments: 0, drafted: 0, replied: 0, skipped: 0, metricsUpdated: 0, seoSynced: 0, errors: 0 };
   const errors: string[] = [];
   const posts = await recentPublished(workspaceId, 14);
   const conns = new Map<string, Awaited<ReturnType<typeof getConnection>>>();
@@ -107,7 +123,29 @@ export async function syncEngagement(workspaceId: string, now = new Date()) {
   if (stats.drafted && cfg.autoReply === "approve")
     await notify(workspaceId, { type: "announcement", title: `${stats.drafted} comment repl${stats.drafted > 1 ? "ies" : "y"} ready to send`, body: "Open Social autopilot → Comments to approve them.", dedupeKey: `social:replies:${now.toISOString().slice(0, 15)}` });
 
-  if (!ap.metricsSyncedAt || now.getTime() - ap.metricsSyncedAt.getTime() >= METRICS_EVERY_MS) stats.metricsUpdated = await syncMetrics(workspaceId, connFor, errors);
+  const metricsDue = !ap.metricsSyncedAt || now.getTime() - ap.metricsSyncedAt.getTime() >= METRICS_EVERY_MS;
+  if (metricsDue) stats.metricsUpdated = await syncMetrics(workspaceId, connFor, errors);
+  // Google: Search Console keywords once a day, metrics into the report sheet with each metrics run.
+  const google = await googleAccount(workspaceId);
+  if (google) {
+    const d = { http: httpClient() };
+    const [row] = await withTenant(workspaceId, (tx) => tx.select({ seoSyncedAt: schema.socialAutopilots.seoSyncedAt }).from(schema.socialAutopilots).where(eq(schema.socialAutopilots.workspaceId, workspaceId)));
+    if (google.settings.searchConsoleSite && (!row?.seoSyncedAt || now.getTime() - row.seoSyncedAt.getTime() >= 20 * 3600_000)) {
+      try {
+        await syncSeo(workspaceId, google, now);
+        stats.seoSynced = 1;
+      } catch (e) {
+        errors.push(`Search Console: ${e instanceof Error ? e.message : String(e)}`);
+      }
+    }
+    if (metricsDue && google.settings.sheetsLog === "1") {
+      try {
+        await writeMetricsSheet(workspaceId, d, google, await recentPublished(workspaceId, 30));
+      } catch (e) {
+        errors.push(`Google Sheets: ${e instanceof Error ? e.message : String(e)}`);
+      }
+    }
+  }
   await withTenant(workspaceId, (tx) =>
     tx
       .update(schema.socialAutopilots)
