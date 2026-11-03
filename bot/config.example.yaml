@@ -1,9 +1,11 @@
 # Copy to config.yaml and edit. ${VAR} is replaced from the environment.
 
-symbol: frxEURUSD        # Deriv symbol for feed/execution. Browser brokers: the chart you opened must match.
-granularity: 60          # 1-minute candles
-expiry_sec: 60           # 1-minute contracts
-history: 300
+# One or many symbols. The bot scans all of them on every candle close and
+# takes the strongest signals first (see risk.max_signals_per_close).
+symbols: [frxEURUSD, frxGBPUSD, frxUSDJPY, frxAUDUSD]
+granularity: 60          # base candle size (seconds)
+expiry_sec: 60           # contract length
+history: 300             # base candles kept for indicators
 
 strategy:
   strategies: [mean_reversion]       # or [mean_reversion, trend_pullback] (both must agree)
@@ -14,6 +16,12 @@ strategy:
   bb_std: 2.0
   ema_trend: 50
   max_trend_slope_atr: 1.5
+  # multi-timeframe filter
+  htf_granularity: 300               # 5-minute bias
+  htf_mode: filter                   # filter (block counter-trend) | require (only aligned) | off
+  htf_ema_fast: 20
+  htf_ema_slow: 50
+  htf_bonus: 0.1                     # confidence bonus when aligned
 
 risk:
   stake_pct: 1.0
@@ -26,24 +34,44 @@ risk:
   min_confidence: 0.6
   trade_hours_utc: {start: 7, end: 20}
   daily_profit_target_pct: 4
+  max_concurrent_trades: 2           # open positions across all symbols
+  max_signals_per_close: 1           # new trades per candle close
+
+# Adaptive journal filter: skip symbols/hours that recently ran below breakeven.
+journal:
+  auto_filter: true
+  payout: 0.85
+  lookback_trades: 200
+  min_trades: 15
+  margin_pct: 3
 
 # --- choose ONE broker -----------------------------------------------------
 broker:
-  kind: paper              # paper | deriv | browser
+  kind: paper              # paper | deriv | browser | extension
   paper:
     start_balance: 1000
     payout: 0.85
   deriv:
-    token: ${DERIV_TOKEN}  # api.deriv.com -> create token with Trade scope. Demo account = VRTC login.
+    token: ${DERIV_TOKEN}  # api.deriv.com -> token with Trade scope. Demo = VRTC login.
     app_id: 1089
     currency: USD
   browser:
-    profile: pocketoption  # pocketoption | quotex | iqoption | olymptrade (see brokers/profiles)
+    profile: pocketoption  # pocketoption | quotex | iqoption | olymptrade
     user_data_dir: browser-profile
     headless: false
     settle_grace_sec: 8
+  extension:               # Chrome extension executes; bot only signals (see ../extension)
+    nominal_balance: 100
 
-# Candle feed, used when the broker cannot stream candles (paper, browser).
+# Local WebSocket server for the Chrome extension / other clients.
+# Always on when broker.kind is extension; enable here to also mirror signals
+# while trading through another broker.
+server:
+  enabled: false
+  host: 127.0.0.1
+  port: 8765
+
+# Candle feed, used when the broker cannot stream candles (paper, browser, extension).
 data:
   kind: deriv              # deriv | binance
   binance:
@@ -52,5 +80,22 @@ data:
 telegram:
   token: ${TELEGRAM_BOT_TOKEN}
   chat_id: ${TELEGRAM_CHAT_ID}
+
+# License / dashboard (the Next.js app in this repo). Leave empty to disable.
+license:
+  server_url: ${BOT_LICENSE_SERVER}   # e.g. https://yourdomain.com
+  key: ${BOT_LICENSE_KEY}             # BB-XXXX-XXXX-XXXX-XXXX
+  recheck_sec: 3600
+  grace_sec: 86400
+
+# Telegram signal copier (python main.py copy). Needs: pip install telethon
+copier:
+  api_id: ${TG_API_ID}                # my.telegram.org
+  api_hash: ${TG_API_HASH}
+  session: copier.session
+  channels: []                        # ["@channelname", -1001234567890]
+  default_expiry_sec: 60
+  symbol_map: {"EUR/USD": frxEURUSD, "GBP/USD": frxGBPUSD}
+  patterns: []                        # extra regexes with named groups symbol/direction/expiry
 
 log_file: trades.log

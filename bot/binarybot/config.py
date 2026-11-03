@@ -15,11 +15,15 @@ DEFAULTS: dict = {
     "granularity": 60,          # candle size in seconds
     "expiry_sec": 60,           # contract length
     "history": 300,             # candles to keep for indicators
-    "strategy": {"strategies": ["mean_reversion"], "min_confidence": 0.6},
+    "strategy": {"strategies": ["mean_reversion"], "min_confidence": 0.6, "htf_granularity": 300, "htf_mode": "filter"},
     "risk": {},
     "broker": {"kind": "paper"},
     "data": {"kind": "deriv"},
     "telegram": {},
+    "journal": {"auto_filter": False},
+    "license": {},
+    "server": {"enabled": False, "host": "127.0.0.1", "port": 8765},
+    "copier": {},
     "log_file": "trades.log",
 }
 

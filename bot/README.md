@@ -1,24 +1,34 @@
 # binarybot
 
 Modular signal + auto-trade engine for short-expiry binary options.
-One strategy core, pluggable brokers, hard risk limits, backtester, Telegram alerts.
+Multi-asset scanning, multi-timeframe filter, pluggable brokers, hard risk
+limits, walk-forward optimizer, trade journal analytics, Telegram alerts,
+Telegram signal copier, local signal server for the Chrome extension, and a
+license client for the dashboard in this repo.
 
 ```
 bot/
-├── main.py                      CLI: download | backtest | run
+├── main.py                      CLI: download | backtest | optimize | journal | run | copy
 ├── config.example.yaml          copy to config.yaml
 ├── binarybot/
 │   ├── indicators.py            EMA, RSI, Bollinger, ATR, Stochastic, MACD (pure pandas)
 │   ├── strategy.py              mean_reversion, trend_pullback  -> Signal(direction, confidence, reasons)
-│   ├── risk.py                  stake %, daily loss cap, loss streak halt, cooldown, trade hours
-│   ├── backtest.py              candle-by-candle replay with payout model
-│   ├── runner.py                live loop: candle close -> signal -> risk -> place -> settle
+│   ├── mtf.py                   multi-timeframe bias (resample + EMA stack) that filters/boosts signals
+│   ├── risk.py                  stake %, daily loss cap, loss streak halt, cooldown, hours, concurrency
+│   ├── backtest.py              candle-by-candle replay with payout model (+ MTF)
+│   ├── optimize.py              random/grid search with walk-forward out-of-sample validation
+│   ├── journal.py               analytics over trades.log + adaptive symbol/hour filter
+│   ├── runner.py                live loop: scan all symbols -> rank -> risk -> place -> settle
+│   ├── signal_server.py         local WebSocket server (Chrome extension protocol)
+│   ├── license.py               license validation + trade/status push to the dashboard
+│   ├── copier.py                Telegram channel -> parsed signal (Telethon)
 │   ├── datasource.py            free candle feeds: Deriv (forex/synthetics), Binance (crypto)
-│   ├── notify.py                Telegram
+│   ├── notify.py                Telegram alerts
 │   └── brokers/
 │       ├── paper.py             simulated account, settles on the live feed
 │       ├── deriv.py             official Deriv WebSocket API (demo + real)
 │       ├── browser.py           Playwright automation for brokers without an API
+│       ├── extension.py         hands execution to the Chrome extension (../extension)
 │       └── profiles/*.yaml      selectors for pocketoption, quotex, iqoption, olymptrade
 └── tests/
 ```
@@ -48,6 +58,38 @@ breakdown so you can restrict `risk.trade_hours_utc` to the hours that work.
 
 Tune `strategy.*` in `config.yaml` and re-run. If the backtest does not beat
 breakeven by a clear margin over thousands of trades, do not go live.
+
+### Multi-asset and multi-timeframe
+
+`symbols: [frxEURUSD, frxGBPUSD, ...]` makes the runner scan every symbol on
+each candle close and take the strongest signals first, bounded by
+`risk.max_signals_per_close` and `risk.max_concurrent_trades`.
+
+`strategy.htf_granularity: 300` adds a 5-minute bias (EMA20/EMA50 stack and
+slope). `htf_mode: filter` blocks counter-trend entries and gives aligned ones
+a confidence bonus; `require` trades only with the trend; `off` disables it.
+The backtester applies the same filter (`--no-htf` to compare).
+
+### Optimizer (walk-forward)
+
+```bash
+python main.py optimize --symbol frxEURUSD --count 20000 --samples 60 --folds 4 --out best.yaml
+```
+
+Each parameter combination is fitted on the first 70% of every fold and scored
+on the remaining 30%. The ranking uses out-of-sample results only. Merge the
+`strategy:` block from `best.yaml` into `config.yaml`. A custom search space
+is a YAML file `{param: [values]}` passed with `--space`.
+
+### Journal analytics
+
+```bash
+python main.py journal --days 30
+```
+
+Win rate / pnl by symbol, hour, direction, strategy and confidence bucket,
+streaks, best and worst day. With `journal.auto_filter: true` the live runner
+skips symbols and hours whose last `lookback_trades` ran below breakeven.
 
 ## 2. Paper / dry run
 
@@ -84,6 +126,36 @@ account before using it for real.**
 These brokers forbid automation in their terms of service and can close
 accounts. That risk is yours.
 
+## 5. Chrome extension (customer-friendly execution)
+
+Set `broker.kind: extension`. The bot starts a local WebSocket server
+(`server.host/port`, default `ws://127.0.0.1:8765`) and the extension in
+`../extension` shows each signal as an overlay on the broker page and, with
+auto-trade on, clicks CALL/PUT and reports the result from the balance change.
+See `../extension/README.md`. `server.enabled: true` mirrors signals to the
+extension while executing through another broker.
+
+## 6. Telegram signal copier
+
+```bash
+pip install telethon
+python main.py copy            # or --dry-run
+```
+
+Fill `copier:` in `config.yaml` (api_id/api_hash from my.telegram.org,
+`channels`, `symbol_map`). Messages like `EUR/USD CALL 1M`, `GBPUSD-OTC 🔴 PUT 5 min`
+or `UP AUD/JPY 3 minutes` are parsed; add regexes with named groups
+`symbol`/`direction`/`expiry` under `patterns` for other formats. Copied
+signals pass through the same risk manager and journal filter.
+
+## 7. License + dashboard
+
+`license.server_url` + `license.key` point the bot at the Next.js dashboard in
+this repo (`/app/bot`). The key is validated at start-up and every
+`recheck_sec`; trades and status are pushed so the dashboard shows the equity
+curve, win rates and device health per license. A short outage is tolerated
+for `grace_sec`.
+
 ## Risk rules (risk.* in config)
 
 | key | meaning |
@@ -95,6 +167,8 @@ accounts. That risk is yours.
 | `max_daily_trades` | hard cap per day |
 | `trade_hours_utc` | `{start, end}` or a list of hours |
 | `daily_profit_target_pct` | stop for the day once reached |
+| `max_concurrent_trades` | open positions across all symbols |
+| `max_signals_per_close` | new trades per candle close |
 
 There is no martingale and there never will be. Add it and the math turns
 against you.

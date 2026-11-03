@@ -1,0 +1,33 @@
+{
+  "manifest_version": 3,
+  "name": "binarybot bridge",
+  "version": "0.1.0",
+  "description": "Shows binarybot signals inside your broker page and can place them for you. Connects only to a bot running on your own machine.",
+  "permissions": ["storage", "alarms"],
+  "host_permissions": [
+    "*://*.pocketoption.com/*",
+    "*://*.po.trade/*",
+    "*://*.qxbroker.com/*",
+    "*://*.quotex.io/*",
+    "*://*.quotex.com/*",
+    "*://*.iqoption.com/*",
+    "*://*.olymptrade.com/*"
+  ],
+  "background": { "service_worker": "background.js" },
+  "action": { "default_popup": "popup.html", "default_title": "binarybot bridge" },
+  "content_scripts": [
+    {
+      "matches": [
+        "*://*.pocketoption.com/*",
+        "*://*.po.trade/*",
+        "*://*.qxbroker.com/*",
+        "*://*.quotex.io/*",
+        "*://*.quotex.com/*",
+        "*://*.iqoption.com/*",
+        "*://*.olymptrade.com/*"
+      ],
+      "js": ["lib.js", "brokers.js", "content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}

@@ -6,6 +6,8 @@ from dataclasses import dataclass
 
 import pandas as pd
 
+from . import mtf
+from .indicators import enrich
 from .strategy import CALL, PUT, generate
 
 
@@ -40,14 +42,40 @@ def run_backtest(
     payout: float = 0.85,
     warmup: int = 80,
     min_confidence: float = 0.6,
+    granularity: int = 60,
+    htf_granularity: int | None = None,
+    progress=None,
 ) -> BacktestResult:
-    """Walk forward candle by candle, evaluate at each close, settle at expiry close."""
+    """Walk forward candle by candle, evaluate at each close, settle at expiry close.
+
+    `htf_granularity` (seconds) enables the multi-timeframe filter by resampling
+    the same candles, exactly as the live runner would see them.
+    """
     rows: list[dict] = []
     n = len(candles)
     i = warmup
+    use_htf = bool(htf_granularity) and params.get("htf_mode", "filter") != "off"
+    # Indicators are causal, so enriching once and slicing equals enriching each prefix.
+    enriched = enrich(candles, params)
+    htf_full = None
+    bias_cache: dict[int, tuple[int, str]] = {}
+    if use_htf:
+        warmup = max(warmup, (params.get("htf_ema_slow", 50) + 5) * (htf_granularity // granularity))
+        i = warmup
+        htf_full = mtf.resample(candles, granularity, htf_granularity)
+        htf_close_times = (htf_full["time"] + htf_granularity).to_numpy()
     while i < n - expiry_candles:
-        window = candles.iloc[: i + 1]
-        sig = generate(window, params)
+        window = enriched.iloc[: i + 1]
+        htf_bias = None
+        if use_htf:
+            # only higher-timeframe candles that closed by this base candle's close
+            k = int((htf_close_times <= int(candles["time"].iloc[i]) + granularity).sum())
+            if k not in bias_cache:
+                bias_cache[k] = mtf.bias(htf_full.iloc[:k], params)
+            htf_bias = bias_cache[k]
+        sig = generate(window, params, enriched=True, htf_bias=htf_bias)
+        if progress and i % 500 == 0:
+            progress(i, n)
         if sig.is_trade and sig.confidence >= min_confidence:
             entry = float(candles["close"].iloc[i])
             exit_ = float(candles["close"].iloc[i + expiry_candles])

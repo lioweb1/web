@@ -1,0 +1,51 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>binarybot bridge</title>
+  <style>
+    body { width: 320px; margin: 0; padding: 12px; font: 13px system-ui, sans-serif; color: #0f172a; background: #f8fafc; }
+    h1 { font-size: 14px; margin: 0 0 8px; display: flex; align-items: center; gap: 8px; }
+    .dot { width: 9px; height: 9px; border-radius: 50%; background: #ef4444; display: inline-block; }
+    .dot.on { background: #22c55e; }
+    label { display: block; margin: 8px 0 3px; font-weight: 600; }
+    input[type=text], input[type=number], textarea { width: 100%; padding: 6px; border: 1px solid #cbd5e1; border-radius: 6px; font: inherit; }
+    textarea { height: 80px; font-family: ui-monospace, monospace; font-size: 11px; }
+    .check { display: flex; align-items: center; gap: 6px; margin-top: 8px; font-weight: 600; }
+    .row { display: flex; gap: 6px; margin-top: 10px; }
+    button { flex: 1; padding: 7px; border-radius: 6px; border: 1px solid #94a3b8; background: #fff; cursor: pointer; font-weight: 600; }
+    button.primary { background: #2563eb; border-color: #2563eb; color: #fff; }
+    #out { margin-top: 10px; font-family: ui-monospace, monospace; font-size: 11px; white-space: pre-wrap; background: #fff; border: 1px solid #e2e8f0; border-radius: 6px; padding: 6px; min-height: 20px; }
+    .ok { color: #16a34a; } .bad { color: #dc2626; }
+    small { color: #64748b; }
+  </style>
+</head>
+<body>
+  <h1><span class="dot" id="dot"></span> binarybot bridge <small id="conn"></small></h1>
+
+  <label for="serverUrl">Bot server URL</label>
+  <input type="text" id="serverUrl" placeholder="ws://127.0.0.1:8765">
+
+  <div class="check"><input type="checkbox" id="autoTrade"><label for="autoTrade" style="margin:0">Auto-trade signals</label></div>
+  <div class="check"><input type="checkbox" id="ignoreSymbolCheck"><label for="ignoreSymbolCheck" style="margin:0">Ignore symbol check</label></div>
+  <div class="check"><input type="checkbox" id="soundOn"><label for="soundOn" style="margin:0">Sound on signal</label></div>
+
+  <label for="minConfidence">Minimum confidence (0–1)</label>
+  <input type="number" id="minConfidence" min="0" max="1" step="0.05">
+
+  <label for="stakeOverride">Stake override <small>(blank = use bot's stake)</small></label>
+  <input type="number" id="stakeOverride" min="0" step="0.01" placeholder="e.g. 5">
+
+  <label for="selectorOverrides">Selector overrides (JSON) <small>per broker id</small></label>
+  <textarea id="selectorOverrides" placeholder='{"pocketoption": {"balance": ".my-balance"}}'></textarea>
+
+  <div class="row">
+    <button class="primary" id="save">Save</button>
+    <button id="test">Test selectors</button>
+    <button id="reconnect">Reconnect</button>
+  </div>
+  <div id="out"></div>
+  <script src="lib.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>

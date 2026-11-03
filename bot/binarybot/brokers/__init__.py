@@ -17,6 +17,10 @@ def make_broker(cfg: dict) -> BrokerAdapter:
         from .browser import BrowserBroker
 
         return BrowserBroker(**cfg.get("browser", {}))
+    if kind == "extension":
+        from .extension import ExtensionBroker
+
+        return ExtensionBroker(**cfg.get("extension", {}))
     raise ValueError(f"unknown broker kind: {kind}")
 
 

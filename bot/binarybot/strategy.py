@@ -139,10 +139,24 @@ STRATEGIES: dict[str, Callable[[pd.DataFrame, dict], Signal]] = {
 }
 
 
-def generate(raw: pd.DataFrame, params: dict) -> Signal:
-    """Enrich the frame and run the configured strategy (or vote across several)."""
+def generate(raw: pd.DataFrame, params: dict, htf: pd.DataFrame | None = None, enriched: bool = False, htf_bias: tuple[int, str] | None = None) -> Signal:
+    """Enrich the frame and run the configured strategy (or vote across several).
+
+    When `htf` (higher-timeframe candles) is given, the multi-timeframe bias
+    filters / boosts the result according to params["htf_mode"].
+    """
+    sig = _generate_base(raw, params, enriched)
+    if sig.is_trade and (htf is not None or htf_bias is not None):
+        from . import mtf
+
+        b, why = htf_bias if htf_bias is not None else mtf.bias(htf, params)
+        sig = mtf.apply(sig, b, why, params)
+    return sig
+
+
+def _generate_base(raw: pd.DataFrame, params: dict, enriched: bool = False) -> Signal:
     names = params.get("strategies") or [params.get("strategy", "mean_reversion")]
-    df = enrich(raw, params)
+    df = raw if enriched else enrich(raw, params)
     signals = [STRATEGIES[n](df, params) for n in names]
     trades = [s for s in signals if s.is_trade]
     if not trades:

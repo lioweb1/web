@@ -5,3 +5,5 @@ PyYAML>=6.0
 requests>=2.31
 playwright>=1.45
 pytest>=8.0
+telethon>=1.36  # optional: Telegram copier
+pytest-asyncio>=0.23

@@ -18,6 +18,8 @@ class RiskConfig:
     min_confidence: float = 0.6
     trade_hours_utc: list[int] | None = None  # e.g. [7..20]; None = always
     daily_profit_target_pct: float | None = None  # stop for the day once reached
+    max_concurrent_trades: int = 1        # open positions across all symbols
+    max_signals_per_close: int = 1        # new trades per candle close
 
     @classmethod
     def from_dict(cls, d: dict) -> "RiskConfig":
