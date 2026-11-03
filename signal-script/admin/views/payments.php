@@ -15,8 +15,8 @@
       <td class="nowrap"><?= e(fmt_time($p['created_at'])) ?></td>
       <td><a href="<?= e(admin_url('users', ['edit' => $p['user_id']])) ?>"><?= e($p['email'] ?? 'deleted') ?></a></td>
       <td><?= e($p['plan_name']) ?></td>
-      <td><?= e($p['currency'] . ' ' . $p['amount']) ?></td>
-      <td><?= e($p['method']) ?></td>
+      <td><?= e($p['currency'] . ' ' . $p['amount']) ?><?php if (!empty($p['coupon_code'])): ?><br><small class="muted">🏷 <?= e($p['coupon_code']) ?> (was <?= e($p['original_amount']) ?>)</small><?php endif; ?></td>
+      <td><?= e($p['method']) ?><?php if (($p['gateway'] ?? 'manual') !== 'manual'): ?> <span class="badge b-info">auto</span><?php endif; ?></td>
       <td><code><?= e($p['txn_id']) ?></code></td>
       <td class="muted"><?= e($p['note']) ?></td>
       <td><span class="badge b-<?= e($p['status']) ?>"><?= e($p['status']) ?></span></td>

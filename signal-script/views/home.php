@@ -34,6 +34,19 @@
   </div>
 </section>
 
+<?php if (setting('show_how_it_works') === '1'): ?>
+<section class="section">
+  <div class="container">
+    <div class="section-head center"><h2>How it works</h2><p class="muted">From sign-up to your first trade in under 2 minutes.</p></div>
+    <div class="steps">
+      <div class="step reveal"><span class="step-n">1</span><h3>Create a free account</h3><p class="muted">Sign up in seconds and get instant access to free signals.</p></div>
+      <div class="step reveal"><span class="step-n">2</span><h3>Get live signals</h3><p class="muted">Signals appear on the website, in your browser notifications and on Telegram.</p></div>
+      <div class="step reveal"><span class="step-n">3</span><h3>Trade &amp; track</h3><p class="muted">Open the trade with your broker and track your results in your personal journal.</p></div>
+    </div>
+  </div>
+</section>
+<?php endif; ?>
+
 <section class="section">
   <div class="container">
     <div class="features-grid">
@@ -61,7 +74,9 @@
 <?php if ($recent): ?>
 <section class="section">
   <div class="container">
-    <div class="section-head"><h2>Recent results</h2><a class="link" href="<?= e(url('results')) ?>">Full history →</a></div>
+    <div class="section-head"><h2>Last 14 days performance</h2><a class="link" href="<?= e(url('results')) ?>">Full statistics →</a></div>
+    <div class="card"><?php include __DIR__ . '/partials/perf_chart.php'; ?></div>
+    <div class="section-head mt"><h2>Recent results</h2><a class="link" href="<?= e(url('results')) ?>">Full history →</a></div>
     <div class="table-wrap"><table class="table">
       <thead><tr><th>Asset</th><th>Market</th><th>Signal</th><th>Entry</th><th>Close</th><th>Result</th></tr></thead>
       <tbody>
@@ -92,6 +107,17 @@
 </section>
 <?php endif; ?>
 
+<?php include __DIR__ . '/partials/testimonials.php'; ?>
+
+<section class="section">
+  <div class="container">
+    <div class="tools-promo">
+      <a class="promo-tile reveal" href="<?= e(url('markets')) ?>"><span>🌍</span><div><h3>Markets &amp; economic calendar</h3><p class="muted">Heatmap, technical gauges and high-impact news.</p></div></a>
+      <a class="promo-tile reveal" href="<?= e(url('tools')) ?>"><span>🧮</span><div><h3>Trading calculators</h3><p class="muted">Lot size, risk:reward, binary profit, compounding.</p></div></a>
+    </div>
+  </div>
+</section>
+
 <?php if ($posts): ?>
 <section class="section">
   <div class="container">
@@ -100,6 +126,8 @@
   </div>
 </section>
 <?php endif; ?>
+
+<?php include __DIR__ . '/partials/faq.php'; ?>
 
 <?php if (setting('optin_enabled') === '1' && !current_user()): ?>
 <section class="section">

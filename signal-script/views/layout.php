@@ -12,6 +12,8 @@ $nav = [
     '' => 'Home',
     'signals' => 'Live Signals',
     'results' => 'Results',
+    'markets' => 'Markets',
+    'tools' => 'Tools',
     'blog' => 'Analysis',
     'brokers' => 'Brokers',
     'pricing' => 'Premium',
@@ -22,6 +24,7 @@ $current = explode('/', $reqPath)[0];
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<script>document.documentElement.className+=" js"</script>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title><?= e($pageTitle) ?></title>
 <meta name="description" content="<?= e($desc) ?>">
@@ -33,11 +36,33 @@ $current = explode('/', $reqPath)[0];
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="<?= asset('css/style.css') ?>">
+<?php if (setting('pwa_enabled') === '1'): ?>
+<link rel="manifest" href="<?= e(url('manifest.webmanifest')) ?>">
+<meta name="theme-color" content="#070b14">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="apple-touch-icon" href="<?= e(setting('favicon_url') ?: asset('img/icon.svg')) ?>">
+<?php endif; ?>
+<?php if (!setting('favicon_url')): ?><link rel="icon" type="image/svg+xml" href="<?= asset('img/icon.svg') ?>"><?php endif; ?>
 <style>:root{--primary:<?= e(setting('primary_color', '#22c55e')) ?>;--accent:<?= e(setting('accent_color', '#3b82f6')) ?>}<?= setting('custom_css') ?></style>
 <?= setting('head_code') ?>
 </head>
 <body>
 <?= setting('body_start_code') ?>
+<?php
+$annEnds = setting('announce_ends');
+$annOn = setting('announce_enabled') === '1' && setting('announce_text') !== '' && ($annEnds === '' || strtotime($annEnds . ' UTC') > time());
+if ($annOn): ?>
+<div class="announce" id="announce">
+  <div class="container announce-in">
+    <span><?= e(setting('announce_text')) ?></span>
+    <?php if ($annEnds !== ''): ?><span class="announce-timer promo-countdown" data-expires="<?= e(iso_utc(gmdate('Y-m-d H:i:s', strtotime($annEnds . ' UTC')))) ?>" data-long="1">--:--</span><?php endif; ?>
+    <?php if (setting('announce_link') !== ''): ?><a class="btn btn-sm btn-gold" href="<?= e(setting('announce_link')) ?>"><?= e(setting('announce_cta') ?: 'Learn more') ?></a><?php endif; ?>
+    <button class="announce-x" aria-label="Close" onclick="this.closest('.announce').remove();try{sessionStorage.setItem('ann_closed','1')}catch(e){}">×</button>
+  </div>
+</div>
+<script>try{if(sessionStorage.getItem('ann_closed'))document.getElementById('announce').remove()}catch(e){}</script>
+<?php endif; ?>
 <header class="site-header">
   <div class="container nav-wrap">
     <a class="brand" href="<?= e(url()) ?>">
@@ -132,7 +157,10 @@ $current = explode('/', $reqPath)[0];
 </div>
 <?php endif; ?>
 
-<script>window.APP = {base: <?= json_encode(BASE_URL) ?>, csrf: <?= json_encode(csrf_token()) ?>};</script>
+<?php if (!$me): ?>
+<div class="mobile-cta"><a class="btn btn-primary btn-block" href="<?= e(url('register')) ?>">Get free signals →</a></div>
+<?php endif; ?>
+<script>window.APP = {base: <?= json_encode(BASE_URL) ?>, csrf: <?= json_encode(csrf_token()) ?>, pwa: <?= setting('pwa_enabled') === '1' ? 'true' : 'false' ?>};</script>
 <script src="<?= asset('js/app.js') ?>"></script>
 <?php if (setting('custom_js')): ?><script><?= setting('custom_js') ?></script><?php endif; ?>
 <?= setting('footer_code') ?>

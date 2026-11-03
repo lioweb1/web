@@ -180,6 +180,12 @@ switch ($a) {
             'topBrokers' => q('SELECT b.name, COUNT(c.id) n FROM brokers b LEFT JOIN clicks c ON c.broker_id = b.id AND c.created_at > ? GROUP BY b.id ORDER BY n DESC LIMIT 5', [$since])->fetchAll(),
             'pendingPayments' => q("SELECT p.*, u.email, pl.name plan_name FROM payments p JOIN users u ON u.id = p.user_id LEFT JOIN plans pl ON pl.id = p.plan_id WHERE p.status = 'pending' ORDER BY p.id LIMIT 5")->fetchAll(),
             'log' => q('SELECT * FROM engine_log ORDER BY id DESC LIMIT 10')->fetchAll(),
+            'charts' => [
+                'Signups' => daily_series("SELECT DATE(created_at) d, COUNT(*) n FROM users WHERE created_at >= ? GROUP BY DATE(created_at)"),
+                'Revenue' => daily_series("SELECT DATE(created_at) d, SUM(amount) n FROM payments WHERE status = 'approved' AND created_at >= ? GROUP BY DATE(created_at)"),
+                'Subscribers' => daily_series("SELECT DATE(created_at) d, COUNT(*) n FROM subscribers WHERE created_at >= ? GROUP BY DATE(created_at)"),
+                'Affiliate clicks' => daily_series("SELECT DATE(created_at) d, COUNT(*) n FROM clicks WHERE created_at >= ? GROUP BY DATE(created_at)"),
+            ],
         ]);
 
     case 'payments':
@@ -187,20 +193,7 @@ switch ($a) {
             $p = q_one('SELECT * FROM payments WHERE id = ?', [(int)($_POST['id'] ?? 0)]);
             $do = $_POST['do'] ?? '';
             if ($p && $do === 'approve' && $p['status'] !== 'approved') {
-                $plan = q_one('SELECT * FROM plans WHERE id = ?', [$p['plan_id']]);
-                $days = (int)($plan['duration_days'] ?? 30);
-                $firstPaid = !q_val("SELECT id FROM payments WHERE user_id = ? AND status = 'approved'", [$p['user_id']]);
-                add_premium_days((int)$p['user_id'], $days);
-                q("UPDATE payments SET status = 'approved', reviewed_at = ? WHERE id = ?", [now_utc(), $p['id']]);
-                $buyer = q_one('SELECT * FROM users WHERE id = ?', [$p['user_id']]);
-                $reward = (int)setting('referral_reward_days', '0');
-                if ($firstPaid && $buyer && $buyer['referred_by'] && $reward > 0) {
-                    add_premium_days((int)$buyer['referred_by'], $reward);
-                    q('UPDATE users SET referral_days_earned = referral_days_earned + ? WHERE id = ?', [$reward, $buyer['referred_by']]);
-                }
-                if ($buyer) {
-                    send_mail($buyer['email'], 'Your premium is active', "Hi {$buyer['name']},\n\nYour payment was approved and premium is now active for $days days.\n\n" . url('signals'));
-                }
+                $days = approve_payment($p);
                 flash('success', "Approved. User got $days premium days.");
             } elseif ($p && $do === 'reject') {
                 q("UPDATE payments SET status = 'rejected', reviewed_at = ? WHERE id = ?", [now_utc(), $p['id']]);
@@ -377,6 +370,30 @@ switch ($a) {
         if (isset($_GET['json'])) json_out(['files' => $files]);
         admin_render('media', ['title' => 'Media library', 'files' => $files]);
 
+    case 'backup':
+        if (is_post()) {
+            @set_time_limit(300);
+            header('Content-Type: application/sql; charset=utf-8');
+            header('Content-Disposition: attachment; filename="backup-' . gmdate('Ymd-His') . '.sql"');
+            echo "-- " . setting('site_name') . " backup " . gmdate('Y-m-d H:i:s') . " UTC\nSET NAMES utf8mb4;\nSET FOREIGN_KEY_CHECKS=0;\n\n";
+            $pdo = db();
+            foreach (q('SHOW TABLES')->fetchAll(PDO::FETCH_COLUMN) as $table) {
+                $create = q("SHOW CREATE TABLE `$table`")->fetch(PDO::FETCH_NUM);
+                echo "DROP TABLE IF EXISTS `$table`;\n" . $create[1] . ";\n\n";
+                $st = q("SELECT * FROM `$table`");
+                while ($row = $st->fetch(PDO::FETCH_ASSOC)) {
+                    $vals = array_map(fn($v) => $v === null ? 'NULL' : $pdo->quote((string)$v), $row);
+                    echo "INSERT INTO `$table` (`" . implode('`,`', array_keys($row)) . '`) VALUES (' . implode(',', $vals) . ");\n";
+                }
+                echo "\n";
+                flush();
+            }
+            echo "SET FOREIGN_KEY_CHECKS=1;\n";
+            exit;
+        }
+        $sizes = q('SELECT table_name t, table_rows r, ROUND((data_length + index_length) / 1024) kb FROM information_schema.tables WHERE table_schema = DATABASE() ORDER BY t')->fetchAll();
+        admin_render('backup', ['title' => 'Backup', 'sizes' => $sizes]);
+
     case 'log':
         if (is_post()) {
             q('DELETE FROM engine_log');
@@ -397,12 +414,18 @@ switch ($a) {
 }
 
 /* ---------- helpers ---------- */
-function add_premium_days(int $userId, int $days): void
+function daily_series(string $sql, int $days = 30): array
 {
-    $u = q_one('SELECT premium_until FROM users WHERE id = ?', [$userId]);
-    if (!$u) return;
-    $start = (!empty($u['premium_until']) && strtotime($u['premium_until'] . ' UTC') > time()) ? strtotime($u['premium_until'] . ' UTC') : time();
-    q('UPDATE users SET premium_until = ? WHERE id = ?', [gmdate('Y-m-d H:i:s', $start + $days * 86400), $userId]);
+    $map = [];
+    foreach (q($sql, [gmdate('Y-m-d 00:00:00', time() - ($days - 1) * 86400)])->fetchAll() as $r) {
+        $map[$r['d']] = (float)$r['n'];
+    }
+    $out = [];
+    for ($i = $days - 1; $i >= 0; $i--) {
+        $d = gmdate('Y-m-d', time() - $i * 86400);
+        $out[$d] = $map[$d] ?? 0;
+    }
+    return $out;
 }
 
 function handle_upload(array $file, string $dir): array

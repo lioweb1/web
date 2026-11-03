@@ -108,6 +108,24 @@ function default_settings(): array
         'optin_title' => 'Get free signals in your inbox',
         'optin_text' => 'Join our list for free daily signals, market analysis and exclusive broker bonuses.',
         'optin_consent' => 'I agree to receive emails and can unsubscribe at any time.',
+        // Promo / announcement bar
+        'announce_enabled' => '0',
+        'announce_text' => '🔥 Limited offer: 30% OFF all premium plans with code VIP30',
+        'announce_link' => '',
+        'announce_cta' => 'Claim offer',
+        'announce_ends' => '',
+        // Crypto auto-payment (NOWPayments)
+        'nowpayments_api_key' => '',
+        'nowpayments_ipn_secret' => '',
+        'nowpayments_sandbox' => '0',
+        // Membership
+        'expiry_reminder_days' => '3',
+        // App / site
+        'pwa_enabled' => '1',
+        'maintenance_mode' => '0',
+        'maintenance_text' => 'We are upgrading our signal servers. We will be back shortly.',
+        'show_how_it_works' => '1',
+        'journal_payout' => '85',
         // Custom code
         'head_code' => '',
         'body_start_code' => '',
@@ -542,4 +560,179 @@ function send_mail(string $to, string $subject, string $body): bool
     $headers = 'From: ' . setting('site_name') . ' <' . $from . ">\r\n" .
         "MIME-Version: 1.0\r\nContent-Type: text/plain; charset=UTF-8\r\n";
     return @mail($to, '=?UTF-8?B?' . base64_encode($subject) . '?=', $body, $headers);
+}
+
+
+/* ---------------------------------------------------------------
+ * Coupons
+ * ------------------------------------------------------------- */
+/** @return array{coupon:?array,error:?string} */
+function find_coupon(string $code): array
+{
+    $code = strtoupper(trim($code));
+    if ($code === '') {
+        return ['coupon' => null, 'error' => null];
+    }
+    $c = q_one('SELECT * FROM coupons WHERE code = ? AND active = 1', [$code]);
+    if (!$c) return ['coupon' => null, 'error' => 'This coupon code is not valid.'];
+    if ($c['expires_at'] && strtotime($c['expires_at'] . ' UTC') < time()) return ['coupon' => null, 'error' => 'This coupon has expired.'];
+    if ((int)$c['max_uses'] > 0 && (int)$c['used'] >= (int)$c['max_uses']) return ['coupon' => null, 'error' => 'This coupon has been fully used.'];
+    return ['coupon' => $c, 'error' => null];
+}
+
+function plan_price(array $plan, ?array $coupon): float
+{
+    $price = (float)$plan['price'];
+    if ($coupon) {
+        $price = round($price * (100 - min(100, (int)$coupon['percent_off'])) / 100, 2);
+    }
+    return $price;
+}
+
+function money(float|string $amount, string $currency = 'USD'): string
+{
+    $f = (float)$amount;
+    $a = number_format($f, fmod($f, 1.0) == 0.0 ? 0 : 2, '.', ',');
+    return $currency === 'USD' ? '$' . $a : $a . ' ' . $currency;
+}
+
+/** Extend a user's premium by N days (stacks on top of remaining time). */
+function add_premium_days(int $userId, int $days): void
+{
+    $u = q_one('SELECT premium_until FROM users WHERE id = ?', [$userId]);
+    if (!$u) return;
+    $start = (!empty($u['premium_until']) && strtotime($u['premium_until'] . ' UTC') > time()) ? strtotime($u['premium_until'] . ' UTC') : time();
+    q('UPDATE users SET premium_until = ?, expiry_reminded = 0 WHERE id = ?', [gmdate('Y-m-d H:i:s', $start + $days * 86400), $userId]);
+}
+
+/** Approve a payment: activates premium, counts coupon, rewards referrer, emails buyer. */
+function approve_payment(array $p): int
+{
+    if ($p['status'] === 'approved') return 0;
+    $plan = q_one('SELECT * FROM plans WHERE id = ?', [$p['plan_id']]);
+    $days = (int)($plan['duration_days'] ?? 30);
+    $firstPaid = !q_val("SELECT id FROM payments WHERE user_id = ? AND status = 'approved'", [$p['user_id']]);
+    add_premium_days((int)$p['user_id'], $days);
+    q("UPDATE payments SET status = 'approved', reviewed_at = ? WHERE id = ?", [now_utc(), $p['id']]);
+    if (!empty($p['coupon_code'])) {
+        q('UPDATE coupons SET used = used + 1 WHERE code = ?', [$p['coupon_code']]);
+    }
+    $buyer = q_one('SELECT * FROM users WHERE id = ?', [$p['user_id']]);
+    $reward = (int)setting('referral_reward_days', '0');
+    if ($firstPaid && $buyer && $buyer['referred_by'] && $reward > 0) {
+        add_premium_days((int)$buyer['referred_by'], $reward);
+        q('UPDATE users SET referral_days_earned = referral_days_earned + ? WHERE id = ?', [$reward, $buyer['referred_by']]);
+    }
+    if ($buyer) {
+        send_mail($buyer['email'], 'Your premium is active', "Hi {$buyer['name']},\n\nYour payment was confirmed and premium is now active for $days days.\n\nOpen live signals: " . url('signals') . "\n\nThank you!\n" . setting('site_name'));
+    }
+    return $days;
+}
+
+/* ---------------------------------------------------------------
+ * NOWPayments (crypto, automatic activation)
+ * ------------------------------------------------------------- */
+function nowpayments_enabled(): bool
+{
+    return setting('nowpayments_api_key') !== '' && setting('nowpayments_ipn_secret') !== '';
+}
+
+function nowpayments_base(): string
+{
+    return setting('nowpayments_sandbox') === '1' ? 'https://api-sandbox.nowpayments.io/v1' : 'https://api.nowpayments.io/v1';
+}
+
+/** Creates a hosted invoice and returns its URL, or null on failure. */
+function nowpayments_invoice(int $paymentId, float $amount, string $currency, string $description): ?string
+{
+    $ch = curl_init(nowpayments_base() . '/invoice');
+    curl_setopt_array($ch, [
+        CURLOPT_POST => true,
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_TIMEOUT => 20,
+        CURLOPT_HTTPHEADER => ['x-api-key: ' . setting('nowpayments_api_key'), 'Content-Type: application/json'],
+        CURLOPT_POSTFIELDS => json_encode([
+            'price_amount' => $amount,
+            'price_currency' => strtolower($currency === 'USDT' ? 'usd' : $currency),
+            'order_id' => 'P' . $paymentId,
+            'order_description' => $description,
+            'ipn_callback_url' => url('ipn/nowpayments'),
+            'success_url' => url('dashboard?paid=1'),
+            'cancel_url' => url('pricing'),
+        ]),
+    ]);
+    $res = json_decode((string)curl_exec($ch), true);
+    curl_close($ch);
+    if (!empty($res['invoice_url'])) {
+        q('UPDATE payments SET gateway_ref = ? WHERE id = ?', [(string)($res['id'] ?? ''), $paymentId]);
+        return (string)$res['invoice_url'];
+    }
+    error_log('[signal-script] NOWPayments invoice failed: ' . json_encode($res));
+    return null;
+}
+
+function nowpayments_verify(string $body, string $sig): ?array
+{
+    $data = json_decode($body, true);
+    if (!is_array($data) || $sig === '') return null;
+    $sorter = function (array &$a) use (&$sorter): void {
+        ksort($a);
+        foreach ($a as &$v) if (is_array($v)) $sorter($v);
+    };
+    $sorted = $data;
+    $sorter($sorted);
+    $calc = hash_hmac('sha512', json_encode($sorted, JSON_UNESCAPED_SLASHES), trim(setting('nowpayments_ipn_secret')));
+    return hash_equals($calc, strtolower($sig)) ? $data : null;
+}
+
+/* ---------------------------------------------------------------
+ * Trade journal
+ * ------------------------------------------------------------- */
+function journal_stats(int $userId): array
+{
+    $rows = q('SELECT j.*, s.status, s.asset, s.market, s.direction, s.created_at signal_time FROM journal j JOIN signals s ON s.id = j.signal_id WHERE j.user_id = ? ORDER BY j.id DESC', [$userId])->fetchAll();
+    $st = ['trades' => 0, 'wins' => 0, 'losses' => 0, 'open' => 0, 'pl' => 0.0, 'staked' => 0.0, 'rows' => $rows];
+    foreach ($rows as $r) {
+        $st['trades']++;
+        if ($r['status'] === 'win') { $st['wins']++; $st['pl'] += (float)$r['stake'] * (int)$r['payout_pct'] / 100; $st['staked'] += (float)$r['stake']; }
+        elseif ($r['status'] === 'loss') { $st['losses']++; $st['pl'] -= (float)$r['stake']; $st['staked'] += (float)$r['stake']; }
+        elseif ($r['status'] === 'active') $st['open']++;
+    }
+    $closed = $st['wins'] + $st['losses'];
+    $st['rate'] = $closed ? round($st['wins'] / $closed * 100, 1) : 0;
+    $st['roi'] = $st['staked'] > 0 ? round($st['pl'] / $st['staked'] * 100, 1) : 0;
+    return $st;
+}
+
+/* ---------------------------------------------------------------
+ * Misc
+ * ------------------------------------------------------------- */
+function share_links(string $link, string $text): array
+{
+    $u = rawurlencode($link);
+    $t = rawurlencode($text);
+    return [
+        'Telegram' => "https://t.me/share/url?url=$u&text=$t",
+        'WhatsApp' => "https://wa.me/?text=$t%20$u",
+        'Facebook' => "https://www.facebook.com/sharer/sharer.php?u=$u",
+        'X' => "https://twitter.com/intent/tweet?url=$u&text=$t",
+    ];
+}
+
+/** Daily win/loss series for charts. */
+function performance_series(int $days = 30, ?string $market = null): array
+{
+    $params = [gmdate('Y-m-d 00:00:00', time() - ($days - 1) * 86400)];
+    $extra = '';
+    if ($market) { $extra = ' AND market = ?'; $params[] = $market; }
+    $rows = q("SELECT DATE(closed_at) d, SUM(status='win') w, SUM(status='loss') l FROM signals WHERE closed_at >= ? AND status IN ('win','loss')$extra GROUP BY DATE(closed_at)", $params)->fetchAll();
+    $map = [];
+    foreach ($rows as $r) $map[$r['d']] = [(int)$r['w'], (int)$r['l']];
+    $out = [];
+    for ($i = $days - 1; $i >= 0; $i--) {
+        $d = gmdate('Y-m-d', time() - $i * 86400);
+        [$w, $l] = $map[$d] ?? [0, 0];
+        $out[] = ['date' => $d, 'wins' => $w, 'losses' => $l];
+    }
+    return $out;
 }

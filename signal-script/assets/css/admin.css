@@ -58,7 +58,7 @@ a{color:#2563eb;text-decoration:none}
 .field>label,.form>label{display:block;font-weight:600;margin-bottom:4px}
 .form>label{margin-bottom:12px}
 .check{display:flex!important;align-items:center;gap:8px;font-weight:500!important;cursor:pointer}
-input[type=text],input[type=email],input[type=password],input[type=number],input[type=url],input[type=datetime-local],select,textarea{width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:8px;font:inherit;background:#fff;color:var(--text)}
+input:not([type]),input[type=text],input[type=email],input[type=password],input[type=number],input[type=url],input[type=datetime-local],select,textarea{width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:8px;font:inherit;background:#fff;color:var(--text)}
 .form>label input,.form>label select{margin-top:4px}
 .row input[type=text],.row input[type=email],.row input[type=number]{width:auto;flex:1}
 input:focus,select:focus,textarea:focus{outline:2px solid color-mix(in srgb,var(--primary) 50%,transparent);border-color:transparent}
@@ -91,3 +91,10 @@ textarea.code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px;b
 .modal-head .x{background:none;border:0;font-size:1.6rem;cursor:pointer}
 #media-upload{margin:10px 0 16px}
 code{background:#f3f4f6;padding:1px 6px;border-radius:5px;font-size:.85em}
+.charts{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:14px;margin-bottom:4px}
+.chart-card{padding:14px 16px}
+.chart-head{display:flex;justify-content:space-between;align-items:baseline;color:var(--muted);font-size:.82rem}
+.chart-head b{color:var(--text);font-size:1.2rem}
+.mini-bars{display:flex;align-items:flex-end;gap:2px;height:60px;margin-top:10px}
+.mini-bars span{flex:1;background:#e5e7eb;border-radius:2px 2px 0 0;min-height:2px}
+.mini-bars span.on{background:var(--primary)}

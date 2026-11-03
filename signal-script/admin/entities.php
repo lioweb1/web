@@ -165,6 +165,74 @@ function admin_entities(): array
             },
         ],
 
+        'coupons' => [
+            'table' => 'coupons', 'title' => 'Coupons', 'singular' => 'coupon', 'order' => 'id DESC',
+            'search' => ['code'],
+            'columns' => [
+                'code' => fn($r) => '<code>' . e($r['code']) . '</code>',
+                'percent_off' => fn($r) => (int)$r['percent_off'] . '% off',
+                'used' => fn($r) => (int)$r['used'] . ((int)$r['max_uses'] > 0 ? ' / ' . (int)$r['max_uses'] : ' / ∞'),
+                'expires_at' => fn($r) => $r['expires_at'] ? e(fmt_time($r['expires_at'])) . (strtotime($r['expires_at'] . ' UTC') < time() ? ' <span class="badge b-loss">expired</span>' : '') : 'Never',
+                'active' => fn($r) => (int)$r['active'] ? '<span class="badge b-active">active</span>' : '<span class="badge">off</span>',
+            ],
+            'view' => fn($r) => url('pricing'),
+            'fields' => [
+                'code' => ['label' => 'Code', 'type' => 'text', 'required' => true, 'help' => 'Letters and numbers, e.g. VIP30. Users type it on the checkout page; you can also link to /upgrade/PLAN_ID?coupon=VIP30'],
+                'percent_off' => ['label' => 'Discount %', 'type' => 'number', 'default' => 20],
+                'max_uses' => ['label' => 'Max uses (0 = unlimited)', 'type' => 'number', 'default' => 0],
+                'expires_at' => ['label' => 'Expires (UTC, optional)', 'type' => 'datetime'],
+                'active' => ['label' => 'Active', 'type' => 'checkbox', 'default' => 1],
+            ],
+            'before_save' => function (array $d, ?array $row): array {
+                $d['code'] = strtoupper(preg_replace('/[^A-Za-z0-9_-]/', '', $d['code']));
+                $d['percent_off'] = max(1, min(100, (int)$d['percent_off']));
+                $d['max_uses'] = max(0, (int)$d['max_uses']);
+                $d['expires_at'] = $d['expires_at'] !== '' ? gmdate('Y-m-d H:i:s', strtotime(str_replace('T', ' ', $d['expires_at']) . ' UTC')) : null;
+                return $d;
+            },
+        ],
+
+        'testimonials' => [
+            'table' => 'testimonials', 'title' => 'Testimonials', 'singular' => 'testimonial', 'order' => 'sort_order, id',
+            'columns' => [
+                'name' => fn($r) => '<strong>' . e($r['name']) . '</strong>',
+                'role' => 'Role',
+                'rating' => fn($r) => str_repeat('★', (int)$r['rating']),
+                'content' => fn($r) => e(excerpt((string)$r['content'], 80)),
+                'active' => fn($r) => (int)$r['active'] ? 'Shown' : 'Hidden',
+            ],
+            'view' => fn($r) => url('pricing'),
+            'fields' => [
+                'name' => ['label' => 'Name', 'type' => 'text', 'required' => true],
+                'role' => ['label' => 'Role / location', 'type' => 'text', 'help' => 'e.g. Premium member, Dhaka'],
+                'avatar_url' => ['label' => 'Photo', 'type' => 'image'],
+                'rating' => ['label' => 'Stars (1-5)', 'type' => 'number', 'default' => 5],
+                'content' => ['label' => 'Review', 'type' => 'textarea', 'required' => true, 'help' => 'Only publish real reviews from real members.'],
+                'active' => ['label' => 'Show on site', 'type' => 'checkbox', 'default' => 1],
+                'sort_order' => ['label' => 'Order', 'type' => 'number'],
+            ],
+            'before_save' => function (array $d, ?array $row): array {
+                $d['rating'] = max(1, min(5, (int)$d['rating']));
+                return $d;
+            },
+        ],
+
+        'faqs' => [
+            'table' => 'faqs', 'title' => 'FAQ', 'singular' => 'question', 'order' => 'sort_order, id',
+            'columns' => [
+                'question' => fn($r) => '<strong>' . e($r['question']) . '</strong>',
+                'answer' => fn($r) => e(excerpt((string)$r['answer'], 90)),
+                'active' => fn($r) => (int)$r['active'] ? 'Shown' : 'Hidden',
+            ],
+            'view' => fn($r) => url('pricing'),
+            'fields' => [
+                'question' => ['label' => 'Question', 'type' => 'text', 'required' => true],
+                'answer' => ['label' => 'Answer', 'type' => 'textarea', 'required' => true],
+                'active' => ['label' => 'Show on site', 'type' => 'checkbox', 'default' => 1],
+                'sort_order' => ['label' => 'Order', 'type' => 'number'],
+            ],
+        ],
+
         'plans' => [
             'table' => 'plans', 'title' => 'Premium plans', 'singular' => 'plan', 'order' => 'sort_order, price',
             'columns' => [
@@ -249,9 +317,25 @@ function admin_settings_groups(): array
             'telegram_results' => ['Post WIN/LOSS results', 'checkbox'],
         ]],
         'payments' => ['title' => 'Payments & referral', 'fields' => [
+            'nowpayments_api_key' => ['NOWPayments API key', 'text', 'Optional: automatic crypto payments. Create an account at nowpayments.io → Settings → API keys. Premium activates instantly when the payment is confirmed.'],
+            'nowpayments_ipn_secret' => ['NOWPayments IPN secret', 'text', 'nowpayments.io → Settings → Payments → IPN secret. The IPN URL is filled in automatically for each invoice.'],
+            'nowpayments_sandbox' => ['Use NOWPayments sandbox (testing)', 'checkbox'],
+            'expiry_reminder_days' => ['Expiry reminder email (days before)', 'number', 'Emails premium members before their plan ends. 0 = off.'],
             'payment_methods' => ['Payment methods', 'textarea', 'One per line, shown in a dropdown.'],
             'payment_instructions' => ['Payment instructions', 'textarea', 'Wallet addresses / account numbers.'],
             'referral_reward_days' => ['Referral reward (premium days)', 'number', 'Given to the referrer when a referred user makes their first approved payment. 0 = off.'],
+        ]],
+        'promo' => ['title' => 'Promo & app', 'fields' => [
+            'announce_enabled' => ['Show announcement bar', 'checkbox'],
+            'announce_text' => ['Announcement text', 'text', 'e.g. 🔥 30% OFF premium this week with code VIP30'],
+            'announce_link' => ['Button link', 'text', 'e.g. /pricing or a full URL'],
+            'announce_cta' => ['Button text', 'text'],
+            'announce_ends' => ['Countdown ends (UTC, YYYY-MM-DD HH:MM)', 'text', 'Shows a live countdown and hides the bar automatically when it ends. Leave empty for no countdown.'],
+            'show_how_it_works' => ['Show “How it works” on homepage', 'checkbox'],
+            'journal_payout' => ['Default binary payout % for trade journal', 'number'],
+            'pwa_enabled' => ['Installable mobile app (PWA)', 'checkbox', 'Visitors can add the site to their home screen like an app.'],
+            'maintenance_mode' => ['Maintenance mode', 'checkbox', 'Visitors see a maintenance page. Admins can still use the site.'],
+            'maintenance_text' => ['Maintenance message', 'textarea'],
         ]],
         'optin' => ['title' => 'Email opt-in', 'fields' => [
             'optin_enabled' => ['Enable opt-in forms', 'checkbox'],

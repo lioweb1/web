@@ -61,6 +61,8 @@ if (!$installed && $ok && ($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
             db()->exec($stmt);
         }
 
+        require __DIR__ . '/inc/migrate.php';
+        run_migrations();
         save_setting('site_name', p('site_name', 'SignalPro') ?: 'SignalPro');
         save_setting('admin_email', $email);
         save_setting('cron_key', bin2hex(random_bytes(16)));
@@ -109,6 +111,17 @@ function install_demo_content(): void
     ];
     foreach ($pages as $i => [$t, $s, $c]) {
         q('INSERT INTO pages (title, slug, content, in_footer, sort_order) VALUES (?,?,?,1,?)', [$t, $s, $c, $i]);
+    }
+    $faqs = [
+        ['How are the signals generated?', 'Our engine analyses live market candles with EMA, RSI, MACD and ATR indicators. A signal is published only when several indicators agree and a fresh trigger appears. Analysts can also publish manual signals.'],
+        ['What is the difference between free and premium?', 'Free members receive standard signals. Premium members also get the highest-confidence signals instantly, the private Telegram channel and premium analysis articles.'],
+        ['How do I activate premium?', 'Choose a plan and pay with crypto for instant activation, or pay manually (bKash, Nagad, bank, USDT) and submit your transaction ID. Manual payments are verified quickly.'],
+        ['Which broker should I use?', 'You can use any regulated broker available in your country. See our Brokers page for the platforms we use.'],
+        ['Are profits guaranteed?', 'No. Trading is risky and no signal service wins every trade. We publish all wins and losses on the Results page. Only trade money you can afford to lose.'],
+        ['Can I cancel?', 'Plans do not renew automatically, so there is nothing to cancel. Your premium simply ends at the end of the period unless you renew.'],
+    ];
+    foreach ($faqs as $i => [$qq, $aa]) {
+        q('INSERT INTO faqs (question, answer, sort_order) VALUES (?,?,?)', [$qq, $aa, $i]);
     }
     q("INSERT INTO posts (title, slug, category, excerpt, content, status) VALUES (?,?,?,?,?, 'published')", [
         'How to use our trading signals', 'how-to-use-our-signals', 'Education',

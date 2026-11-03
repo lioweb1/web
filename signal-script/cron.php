@@ -32,4 +32,15 @@ echo gmdate('Y-m-d H:i:s') . " UTC — created: {$r['created']}, closed: {$r['cl
 foreach ($engine->messages() as $m) {
     echo $m . "\n";
 }
+// Premium expiry reminders (checked at most once per hour)
+$days = (int)setting('expiry_reminder_days', '3');
+if ($days > 0 && (setting('last_reminder') === '' || strtotime(setting('last_reminder') . ' UTC') < time() - 3600)) {
+    save_setting('last_reminder', now_utc());
+    $due = q("SELECT * FROM users WHERE role = 'user' AND expiry_reminded = 0 AND premium_until > ? AND premium_until < ?", [now_utc(), gmdate('Y-m-d H:i:s', time() + $days * 86400)])->fetchAll();
+    foreach ($due as $u) {
+        send_mail($u['email'], 'Your premium membership ends soon', "Hi {$u['name']},\n\nYour premium access ends on " . fmt_time($u['premium_until'], 'F j, Y H:i') . ".\nRenew now to keep receiving premium signals without interruption:\n" . url('pricing') . "\n\n" . setting('site_name'));
+        q('UPDATE users SET expiry_reminded = 1 WHERE id = ?', [$u['id']]);
+    }
+    if ($due) echo 'Expiry reminders sent: ' . count($due) . "\n";
+}
 flock($lock, LOCK_UN);

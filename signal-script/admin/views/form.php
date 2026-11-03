@@ -40,6 +40,8 @@
               <button type="button" class="btn btn-sm" data-pick="#f-<?= e($name) ?>">Choose / upload</button>
               <?php if ($val): ?><img src="<?= e($val) ?>" alt="" class="thumb"><?php endif; ?>
             </div>
+          <?php break; case 'datetime': ?>
+            <input type="datetime-local" id="f-<?= e($name) ?>" name="<?= e($name) ?>" value="<?= $val ? e(str_replace(' ', 'T', substr((string)$val, 0, 16))) : '' ?>">
           <?php break; case 'number': ?>
             <input type="number" id="f-<?= e($name) ?>" name="<?= e($name) ?>" value="<?= e($val) ?>">
           <?php break; case 'decimal': ?>

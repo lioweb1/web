@@ -18,6 +18,15 @@ A self-hosted PHP + MySQL website for publishing binary options, forex and crypt
 | **Custom code** | `<head>` code (Analytics, Pixel), body/footer scripts, custom CSS/JS, 3 ad slots, per-page CSS. |
 | **Customise** | Logo, favicon, colours, all homepage texts, disclaimer, timezone, ticker symbols, social links, all from Admin → Settings. |
 | **Live UI** | TradingView ticker + chart on every signal, countdown timers, auto-refresh, and new-signal toast + browser notification. |
+| **Crypto auto-payment** | Optional NOWPayments integration (USDT, BTC, ETH + 100 coins). The payment is verified by a signed IPN (HMAC-SHA512) and premium activates instantly, with no manual approval. |
+| **Coupons & promo bar** | Discount codes (% off, max uses, expiry) on checkout, plus an announcement bar with a live countdown that hides itself when the offer ends. |
+| **Trading tools** | `/tools`: position/lot size, risk:reward, pip value, binary profit & break-even, martingale table, compounding calculator. |
+| **Markets page** | `/markets`: market overview, forex heatmap, cross rates, economic calendar, technical-analysis gauges (TradingView widgets). |
+| **Performance stats** | 30-day wins/losses chart with cumulative win-rate line, accuracy per asset, current and best win streak. |
+| **Trade journal** | Members click "I took this trade" on a signal. The result updates automatically, and the dashboard shows their win rate, P/L and ROI. |
+| **Social proof** | Admin-managed testimonials and FAQ (with FAQ schema for Google), "How it works" steps, trust row. |
+| **Mobile app (PWA)** | Installable to the home screen, offline fallback, "Install app" button, sticky mobile sign-up bar. |
+| **Admin extras** | 30-day charts (signups, revenue, subscribers, clicks), one-click SQL backup, maintenance mode, premium expiry reminder emails. |
 | **Security** | `password_hash`, PDO prepared statements, CSRF on every form, login rate-limit, honeypots, safe image uploads (no PHP execution in /uploads), and blocked internal folders. |
 
 ## Requirements
@@ -51,6 +60,18 @@ Then log in at `https://yourdomain.com/login`. Admin users go straight to `/admi
 4. **Settings → Telegram** (optional): create a bot with @BotFather, add it as an admin of your channels, paste the token and channel IDs, then click *Test Telegram* on the dashboard.
 5. **Settings → General / Homepage**: logo, colours, texts, timezone.
 6. **Settings → Custom code**: Google Analytics, Facebook Pixel, live chat, ads.
+
+### Automatic crypto payments (optional)
+
+1. Create an account at https://nowpayments.io and add your payout wallet.
+2. Settings → API keys: create an API key. Settings → Payments: set an **IPN secret**.
+3. Paste both into Admin → Settings → Payments & referral.
+
+A "Pay with crypto" button then appears on checkout. Premium activates by itself when the payment is confirmed. Manual payments (bKash, Nagad, bank) still work alongside it.
+
+### Updating from an older version
+
+Upload the new files over the old ones, but keep `config.php` and `uploads/`. The database is upgraded automatically on the next page load.
 
 ## Signal engine & API budget
 

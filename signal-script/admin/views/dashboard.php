@@ -10,6 +10,17 @@
   <div class="kpi"><span>Affiliate clicks (30 days)</span><b><?= $c['clicks'] ?></b></div>
 </div>
 
+<div class="charts">
+  <?php foreach ($charts as $label => $series): $max = max(1, ...array_values($series)); $sum = array_sum($series); ?>
+    <div class="card chart-card">
+      <div class="chart-head"><span><?= e($label) ?> · 30 days</span><b><?= $label === 'Revenue' ? number_format($sum, 2) : (int)$sum ?></b></div>
+      <div class="mini-bars">
+        <?php foreach ($series as $d => $v): ?><span style="height:<?= max(2, round($v / $max * 100)) ?>%" title="<?= e($d) ?>: <?= e($v) ?>" class="<?= $v > 0 ? 'on' : '' ?>"></span><?php endforeach; ?>
+      </div>
+    </div>
+  <?php endforeach; ?>
+</div>
+
 <div class="grid-2">
   <div class="card">
     <h3>Signal engine</h3>

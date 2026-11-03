@@ -17,6 +17,11 @@
     <?php if (!$plans): ?><div class="empty big">Plans coming soon.</div><?php else: ?>
       <div class="plan-grid"><?php foreach ($plans as $p) include __DIR__ . '/partials/plan_card.php'; ?></div>
     <?php endif; ?>
-    <p class="muted small mt center"><?= e(setting('disclaimer')) ?></p>
+    <div class="trust-row">
+      <span>🔒 Secure payments</span><span>⚡ Instant access<?= nowpayments_enabled() ? ' with crypto' : ' after verification' ?></span><span>📊 Transparent results</span><span>💬 Support on Telegram</span>
+    </div>
   </div>
 </section>
+<?php include __DIR__ . '/partials/testimonials.php'; ?>
+<?php include __DIR__ . '/partials/faq.php'; ?>
+<section class="section"><div class="container"><p class="muted small center"><?= e(setting('disclaimer')) ?></p></div></section>

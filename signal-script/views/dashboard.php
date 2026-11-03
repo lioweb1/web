@@ -5,6 +5,7 @@
       <div><h1>Hi, <?= e($u['name']) ?></h1><p class="muted"><?= e($u['email']) ?></p></div>
       <form method="post" action="<?= e(url('logout')) ?>"><?= csrf_field() ?><button class="btn btn-outline btn-sm">Log out</button></form>
     </div>
+    <?php if (isset($_GET['paid'])): ?><div class="alert alert-success">🎉 Thank you! Your payment is being confirmed on the blockchain. Premium activates automatically, usually within a few minutes.</div><?php endif; ?>
     <div class="dash-grid">
       <div class="card">
         <h3>Membership</h3>
@@ -44,6 +45,32 @@
         </form>
       </div>
     </div>
+
+    <div class="section-head mt" id="journal"><h2>📒 My trade journal</h2><span class="muted small">Add trades from any signal page with “I took this trade”.</span></div>
+    <div class="stats-row five">
+      <div class="stat"><div class="stat-num"><?= (int)$journal['trades'] ?></div><div class="stat-label">Trades</div><div class="stat-sub"><?= (int)$journal['open'] ?> open</div></div>
+      <div class="stat"><div class="stat-num"><?= e($journal['rate']) ?>%</div><div class="stat-label">My win rate</div><div class="stat-sub"><?= (int)$journal['wins'] ?>W / <?= (int)$journal['losses'] ?>L</div></div>
+      <div class="stat"><div class="stat-num <?= $journal['pl'] >= 0 ? 'up' : 'down' ?>"><?= $journal['pl'] >= 0 ? '+' : '−' ?>$<?= number_format(abs($journal['pl']), 2) ?></div><div class="stat-label">Profit / loss</div><div class="stat-sub">estimated</div></div>
+      <div class="stat"><div class="stat-num <?= $journal['roi'] >= 0 ? 'up' : 'down' ?>"><?= e($journal['roi']) ?>%</div><div class="stat-label">ROI</div><div class="stat-sub">on closed trades</div></div>
+    </div>
+    <?php if ($journal['rows']): ?>
+    <div class="table-wrap"><table class="table">
+      <thead><tr><th>Signal</th><th>Asset</th><th>Direction</th><th>Amount</th><th>Payout</th><th>Result</th><th>P/L</th><th></th></tr></thead>
+      <tbody><?php foreach (array_slice($journal['rows'], 0, 50) as $j):
+          $pl = $j['status'] === 'win' ? $j['stake'] * $j['payout_pct'] / 100 : ($j['status'] === 'loss' ? -$j['stake'] : null); ?>
+        <tr>
+          <td><a class="link" href="<?= e(url('signal/' . $j['signal_id'])) ?>">#<?= (int)$j['signal_id'] ?></a></td>
+          <td><?= e($j['asset']) ?></td>
+          <td class="<?= $j['direction'] === 'BUY' ? 'up' : 'down' ?>"><?= e(signal_label($j)) ?></td>
+          <td>$<?= e(number_format((float)$j['stake'], 2)) ?></td>
+          <td><?= (int)$j['payout_pct'] ?>%</td>
+          <td><span class="result <?= e($j['status']) ?>"><?= e(strtoupper($j['status'])) ?></span></td>
+          <td class="<?= $pl === null ? '' : ($pl >= 0 ? 'up' : 'down') ?>"><?= $pl === null ? '—' : ($pl >= 0 ? '+' : '−') . '$' . number_format(abs($pl), 2) ?></td>
+          <td><form method="post" action="<?= e(url('journal')) ?>"><?= csrf_field() ?><input type="hidden" name="do" value="remove"><input type="hidden" name="id" value="<?= (int)$j['id'] ?>"><input type="hidden" name="back" value="<?= e(parse_url(url('dashboard'), PHP_URL_PATH)) ?>"><button class="btn-link small" title="Remove">✕</button></form></td>
+        </tr>
+      <?php endforeach; ?></tbody>
+    </table></div>
+    <?php else: ?><div class="empty">No trades yet. Open any signal and click “I took this trade”.</div><?php endif; ?>
 
     <?php if ($signals): ?>
       <div class="section-head mt"><h2>Active signals</h2><a class="link" href="<?= e(url('signals')) ?>">All →</a></div>

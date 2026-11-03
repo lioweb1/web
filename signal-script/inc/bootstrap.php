@@ -26,6 +26,7 @@ ini_set('display_errors', APP_DEBUG ? '1' : '0');
 error_reporting(E_ALL);
 
 require APP_ROOT . '/inc/functions.php';
+require APP_ROOT . '/inc/migrate.php';
 
 set_exception_handler(function (Throwable $e) {
     error_log('[signal-script] ' . $e->getMessage() . ' @ ' . $e->getFile() . ':' . $e->getLine());
@@ -39,6 +40,8 @@ set_exception_handler(function (Throwable $e) {
     echo APP_DEBUG ? '<pre>' . htmlspecialchars((string)$e) . '</pre>' : '<p>Please try again later.</p>';
     exit;
 });
+
+maybe_migrate();
 
 if (PHP_SAPI !== 'cli') {
     start_session();

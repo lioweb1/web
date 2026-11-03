@@ -11,6 +11,7 @@
     <?php else: ?>
       <div class="content"><?= $post['content'] ?></div>
     <?php endif; ?>
+    <?php $shareUrl = url('blog/' . $post['slug']); $shareText = $post['title']; include __DIR__ . '/partials/share.php'; ?>
     <?php if (setting('ad_post')): ?><div class="ad-slot"><?= setting('ad_post') ?></div><?php endif; ?>
     <?php if ($related): ?>
       <h3 class="mt">More analysis</h3>

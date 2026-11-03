@@ -29,6 +29,22 @@ if (isset($_GET['ref']) && is_string($_GET['ref']) && preg_match('/^[A-Z0-9]{6,1
 
 $user = current_user();
 
+if (setting('maintenance_mode') === '1' && !is_admin() && !in_array($route, ['login', 'ipn', 'manifest.webmanifest', 'robots.txt'], true)) {
+    http_response_code(503);
+    header('Retry-After: 1800');
+    render('maintenance', ['title' => 'Maintenance'], '');
+    exit;
+}
+
+function active_list(string $table): array
+{
+    try {
+        return q("SELECT * FROM `$table` WHERE active = 1 ORDER BY sort_order, id")->fetchAll();
+    } catch (Throwable $e) {
+        return [];
+    }
+}
+
 switch ($route) {
     /* ================= HOME ================= */
     case '':
@@ -44,6 +60,9 @@ switch ($route) {
             'brokers' => q('SELECT * FROM brokers WHERE active = 1 ORDER BY featured DESC, sort_order, id LIMIT 3')->fetchAll(),
             'posts' => q("SELECT * FROM posts WHERE status = 'published' ORDER BY created_at DESC LIMIT 3")->fetchAll(),
             'plans' => q('SELECT * FROM plans WHERE active = 1 ORDER BY sort_order, price LIMIT 3')->fetchAll(),
+            'testimonials' => active_list('testimonials'),
+            'faqs' => array_slice(active_list('faqs'), 0, 6),
+            'series' => performance_series(14),
         ]);
         break;
 
@@ -73,6 +92,7 @@ switch ($route) {
             'title' => $canView ? $s['asset'] . ' ' . signal_label($s) . ' signal' : 'Premium ' . $s['market'] . ' signal',
             's' => $s,
             'canView' => $canView,
+            'journal' => $user ? q_one('SELECT * FROM journal WHERE user_id = ? AND signal_id = ?', [$user['id'], $s['id']]) : null,
             'brokers' => q('SELECT * FROM brokers WHERE active = 1 ORDER BY featured DESC, sort_order, id LIMIT 3')->fetchAll(),
         ]);
         break;
@@ -96,8 +116,82 @@ switch ($route) {
             'stats30' => signal_stats(30, $market ?: null),
             'statsAll' => signal_stats(3650, $market ?: null),
             'pager' => pagination($total, $per, $page, url('results') . ($market ? '?market=' . $market : '')),
+            'series' => performance_series(30, $market ?: null),
+            'perAsset' => q("SELECT asset, market, SUM(status='win') w, SUM(status='loss') l FROM signals WHERE status IN ('win','loss')" . ($market ? ' AND market = ?' : '') . " GROUP BY asset, market ORDER BY COUNT(*) DESC LIMIT 12", $market ? [$market] : [])->fetchAll(),
+            'streak' => (function () use ($market) {
+                $rows = q("SELECT status FROM signals WHERE status IN ('win','loss')" . ($market ? ' AND market = ?' : '') . ' ORDER BY closed_at DESC LIMIT 200', $market ? [$market] : [])->fetchAll(PDO::FETCH_COLUMN);
+                $cur = 0; $best = 0; $run = 0;
+                foreach ($rows as $i => $st) { if ($i === $cur && $st === 'win') $cur++; }
+                foreach (array_reverse($rows) as $st) { $run = $st === 'win' ? $run + 1 : 0; $best = max($best, $run); }
+                return ['current' => $cur, 'best' => $best];
+            })(),
         ]);
         break;
+
+    case 'tools':
+        render('tools', ['title' => 'Trading Calculators', 'metaDescription' => 'Free lot size, pip value, risk/reward, binary options profit and compounding calculators.']);
+        break;
+
+    case 'markets':
+        render('markets', ['title' => 'Markets, Heatmap & Economic Calendar', 'metaDescription' => 'Live forex heatmap, economic calendar, technical analysis gauges and market overview.']);
+        break;
+
+    case 'journal':
+        $u = require_login();
+        if (is_post()) {
+            csrf_check();
+            $sid = (int)($_POST['signal_id'] ?? 0);
+            if (($_POST['do'] ?? '') === 'remove') {
+                q('DELETE FROM journal WHERE user_id = ? AND (signal_id = ? OR id = ?)', [$u['id'], $sid, (int)($_POST['id'] ?? 0)]);
+                flash('success', 'Removed from your journal.');
+            } else {
+                $sig = q_one('SELECT * FROM signals WHERE id = ?', [$sid]);
+                if ($sig && can_view_signal($sig, $u)) {
+                    $stake = max(0.01, min(1000000, (float)str_replace(',', '.', (string)($_POST['stake'] ?? '10'))));
+                    $payout = max(1, min(100, (int)($_POST['payout'] ?? setting('journal_payout', '85'))));
+                    q('INSERT INTO journal (user_id, signal_id, stake, payout_pct, note) VALUES (?,?,?,?,?) ON DUPLICATE KEY UPDATE stake = VALUES(stake), payout_pct = VALUES(payout_pct), note = VALUES(note)', [$u['id'], $sid, $stake, $payout, post_str('note', 500) ?: null]);
+                    flash('success', 'Trade saved to your journal. Result updates automatically.');
+                }
+            }
+            $back = (string)($_POST['back'] ?? '');
+            redirect($back !== '' && str_starts_with($back, '/') && !str_starts_with($back, '//') ? $back : url('dashboard'));
+        }
+        redirect('dashboard#journal');
+
+    case 'ipn':
+        if (($seg[1] ?? '') !== 'nowpayments' || !nowpayments_enabled()) json_out(['error' => 'disabled'], 404);
+        $body = (string)file_get_contents('php://input');
+        $data = nowpayments_verify($body, (string)($_SERVER['HTTP_X_NOWPAYMENTS_SIG'] ?? ''));
+        if (!$data) json_out(['error' => 'bad signature'], 401);
+        $pid = (int)ltrim((string)($data['order_id'] ?? ''), 'P');
+        $pay = q_one('SELECT * FROM payments WHERE id = ?', [$pid]);
+        $status = (string)($data['payment_status'] ?? '');
+        if ($pay) {
+            q('UPDATE payments SET txn_id = ?, note = ? WHERE id = ?', [mb_substr((string)($data['payment_id'] ?? $pay['txn_id']), 0, 190), 'NOWPayments: ' . $status . ' · ' . ($data['pay_amount'] ?? '') . ' ' . strtoupper((string)($data['pay_currency'] ?? '')), $pid]);
+            if (in_array($status, ['finished', 'confirmed'], true)) {
+                approve_payment($pay);
+            } elseif (in_array($status, ['failed', 'expired', 'refunded'], true) && $pay['status'] === 'pending') {
+                q("UPDATE payments SET status = 'rejected', reviewed_at = ? WHERE id = ?", [now_utc(), $pid]);
+            }
+        }
+        json_out(['ok' => true]);
+
+    case 'manifest.webmanifest':
+        header('Content-Type: application/manifest+json');
+        echo json_encode([
+            'name' => setting('site_name'),
+            'short_name' => mb_substr(setting('site_name'), 0, 12),
+            'description' => setting('tagline'),
+            'start_url' => url('signals'),
+            'scope' => url(),
+            'display' => 'standalone',
+            'background_color' => '#070b14',
+            'theme_color' => '#070b14',
+            'icons' => [
+                ['src' => setting('favicon_url') ?: asset('img/icon.svg'), 'sizes' => 'any', 'type' => setting('favicon_url') ? 'image/png' : 'image/svg+xml', 'purpose' => 'any maskable'],
+            ],
+        ], JSON_UNESCAPED_SLASHES);
+        exit;
 
     case 'api':
         if (($seg[1] ?? '') === 'signals') {
@@ -190,6 +284,8 @@ switch ($route) {
     case 'pricing':
         render('pricing', [
             'title' => 'Premium Plans',
+            'testimonials' => active_list('testimonials'),
+            'faqs' => active_list('faqs'),
             'plans' => q('SELECT * FROM plans WHERE active = 1 ORDER BY sort_order, price')->fetchAll(),
         ]);
         break;
@@ -200,27 +296,46 @@ switch ($route) {
         if (!$plan) {
             redirect('pricing');
         }
+        $code = strtoupper(trim((string)($_POST['coupon'] ?? ($_GET['coupon'] ?? ''))));
+        ['coupon' => $coupon, 'error' => $couponError] = find_coupon($code);
+        $price = plan_price($plan, $coupon);
         if (is_post()) {
             csrf_check();
-            $method = post_str('method', 60);
-            $txn = post_str('txn_id', 190);
-            $pendingCount = (int)q_val("SELECT COUNT(*) FROM payments WHERE user_id = ? AND status = 'pending'", [$u['id']]);
-            if ($method === '' || $txn === '') {
-                flash('error', 'Please choose a payment method and enter your transaction ID.');
-            } elseif ($pendingCount >= 3) {
-                flash('error', 'You already have pending payments. Please wait for review.');
-            } else {
-                q('INSERT INTO payments (user_id, plan_id, amount, currency, method, txn_id, note) VALUES (?,?,?,?,?,?,?)', [
-                    $u['id'], $plan['id'], $plan['price'], $plan['currency'], $method, $txn, post_str('note', 1000),
+            $pendingCount = (int)q_val("SELECT COUNT(*) FROM payments WHERE user_id = ? AND status = 'pending' AND created_at > ?", [$u['id'], gmdate('Y-m-d H:i:s', time() - 86400)]);
+            $action = $_POST['action'] ?? 'manual';
+            if ($pendingCount >= 5) {
+                flash('error', 'You already have several pending payments. Please wait for review or contact support.');
+            } elseif ($action === 'crypto' && nowpayments_enabled()) {
+                q("INSERT INTO payments (user_id, plan_id, amount, original_amount, coupon_code, currency, method, txn_id, gateway) VALUES (?,?,?,?,?,?,?,?, 'nowpayments')", [
+                    $u['id'], $plan['id'], $price, $plan['price'], $coupon['code'] ?? null, $plan['currency'], 'Crypto (NOWPayments)', 'pending-' . bin2hex(random_bytes(4)),
                 ]);
-                if (setting('admin_email')) {
-                    send_mail(setting('admin_email'), 'New payment to review', "User: {$u['email']}\nPlan: {$plan['name']}\nMethod: $method\nTXN: $txn\n\n" . url('admin/?a=payments'));
+                $pid = (int)db()->lastInsertId();
+                $invoice = nowpayments_invoice($pid, $price, $plan['currency'], setting('site_name') . ' ' . $plan['name'] . ' plan');
+                if ($invoice) {
+                    redirect($invoice);
                 }
-                flash('success', 'Payment submitted! Your premium will be activated after verification.');
-                redirect('dashboard');
+                q('DELETE FROM payments WHERE id = ?', [$pid]);
+                flash('error', 'Crypto checkout is temporarily unavailable. Please use manual payment below.');
+            } else {
+                $method = post_str('method', 60);
+                $txn = post_str('txn_id', 190);
+                if ($method === '' || $txn === '') {
+                    flash('error', 'Please choose a payment method and enter your transaction ID.');
+                } elseif (q_val('SELECT id FROM payments WHERE txn_id = ?', [$txn])) {
+                    flash('error', 'This transaction ID was already submitted.');
+                } else {
+                    q('INSERT INTO payments (user_id, plan_id, amount, original_amount, coupon_code, currency, method, txn_id, note) VALUES (?,?,?,?,?,?,?,?,?)', [
+                        $u['id'], $plan['id'], $price, $plan['price'], $coupon['code'] ?? null, $plan['currency'], $method, $txn, post_str('note', 1000),
+                    ]);
+                    if (setting('admin_email')) {
+                        send_mail(setting('admin_email'), 'New payment to review', "User: {$u['email']}\nPlan: {$plan['name']}\nAmount: $price {$plan['currency']}" . ($coupon ? " (coupon {$coupon['code']})" : '') . "\nMethod: $method\nTXN: $txn\n\n" . url('admin/?a=payments'));
+                    }
+                    flash('success', 'Payment submitted! Your premium will be activated after verification.');
+                    redirect('dashboard');
+                }
             }
         }
-        render('upgrade', ['title' => 'Upgrade to ' . $plan['name'], 'plan' => $plan]);
+        render('upgrade', ['title' => 'Upgrade to ' . $plan['name'], 'plan' => $plan, 'coupon' => $coupon, 'couponError' => $couponError, 'code' => $code, 'price' => $price]);
         break;
 
     /* ================= ACCOUNT ================= */
@@ -366,6 +481,7 @@ switch ($route) {
             'payments' => q('SELECT p.*, pl.name plan_name FROM payments p LEFT JOIN plans pl ON pl.id = p.plan_id WHERE p.user_id = ? ORDER BY p.id DESC LIMIT 20', [$u['id']])->fetchAll(),
             'referrals' => (int)q_val('SELECT COUNT(*) FROM users WHERE referred_by = ?', [$u['id']]),
             'signals' => q("SELECT * FROM signals WHERE status = 'active' ORDER BY created_at DESC LIMIT 6")->fetchAll(),
+            'journal' => journal_stats((int)$u['id']),
         ]);
         break;
 
@@ -394,7 +510,7 @@ switch ($route) {
     case 'sitemap.xml':
         header('Content-Type: application/xml; charset=utf-8');
         echo '<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">';
-        foreach (['', 'signals', 'results', 'blog', 'brokers', 'pricing'] as $p) {
+        foreach (['', 'signals', 'results', 'markets', 'tools', 'blog', 'brokers', 'pricing'] as $p) {
             echo '<url><loc>' . e(url($p)) . '</loc></url>';
         }
         foreach (q("SELECT slug, COALESCE(updated_at, created_at) d FROM posts WHERE status = 'published'")->fetchAll() as $p) {

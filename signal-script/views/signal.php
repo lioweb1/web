@@ -20,6 +20,7 @@
             ], JSON_UNESCAPED_SLASHES) ?></script></div>
           </div>
           <?php if ($s['analysis']): ?><div class="card"><h3>Analysis</h3><p><?= nl2br(e($s['analysis'])) ?></p></div><?php endif; ?>
+          <?php $shareUrl = url('signal/' . $s['id']); $shareText = $s['asset'] . ' ' . signal_label($s) . ' signal'; include __DIR__ . '/partials/share.php'; ?>
         <?php else: ?>
           <h1>🔒 Premium signal</h1>
           <div class="lock-big">
@@ -53,6 +54,25 @@
             <?php if ($s['close_price'] !== null): ?><div><dt>Close</dt><dd><?= fmt_price($s['close_price']) ?></dd></div><?php endif; ?>
           </dl>
         </div>
+        <?php if ($canView): ?>
+          <div class="card">
+            <h3>📒 My trade journal</h3>
+            <?php if (!current_user()): ?>
+              <p class="muted small">Log in to save this trade and track your personal profit &amp; loss.</p>
+              <a class="btn btn-outline btn-sm" href="<?= e(url('login')) ?>">Log in</a>
+            <?php else: ?>
+              <form method="post" action="<?= e(url('journal')) ?>" class="form journal-form">
+                <?= csrf_field() ?>
+                <input type="hidden" name="signal_id" value="<?= (int)$s['id'] ?>">
+                <input type="hidden" name="back" value="<?= e(parse_url(url('signal/' . $s['id']), PHP_URL_PATH)) ?>">
+                <div class="two"><label>Amount ($)<input type="number" step="any" name="stake" value="<?= e($journal['stake'] ?? '10') ?>"></label>
+                <label><?= $s['market'] === 'binary' ? 'Payout %' : 'Reward %' ?><input type="number" name="payout" value="<?= e($journal['payout_pct'] ?? ($s['market'] === 'binary' ? setting('journal_payout', '85') : '100')) ?>"></label></div>
+                <button class="btn btn-primary btn-block btn-sm"><?= $journal ? '✔ Update journal' : '+ I took this trade' ?></button>
+              </form>
+              <?php if ($journal): ?><form method="post" action="<?= e(url('journal')) ?>"><?= csrf_field() ?><input type="hidden" name="do" value="remove"><input type="hidden" name="signal_id" value="<?= (int)$s['id'] ?>"><input type="hidden" name="back" value="<?= e(parse_url(url('signal/' . $s['id']), PHP_URL_PATH)) ?>"><button class="btn-link small">Remove from journal</button></form><?php endif; ?>
+            <?php endif; ?>
+          </div>
+        <?php endif; ?>
         <?php foreach ($brokers as $b): ?>
           <a class="side-broker" href="<?= e(url('go/' . $b['id'])) ?>" target="_blank" rel="sponsored noopener">
             <strong>Trade on <?= e($b['name']) ?></strong><?php if ($b['bonus_text']): ?><span><?= e($b['bonus_text']) ?></span><?php endif; ?>
