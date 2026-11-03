@@ -19,23 +19,51 @@ Built for **personal-injury and workers' comp law firms, medical-malpractice fir
 
 ## Run it
 
+You need Node 20+ and PostgreSQL 14+. Tables are created automatically the first time the app connects.
+
 ```bash
 cd medchrono
 npm install
-cp .env.example .env    # add ANTHROPIC_API_KEY
+cp .env.example .env    # fill in ANTHROPIC_API_KEY, DATABASE_URL, STRIPE_* (see below)
 npm run dev             # http://localhost:3000
 ```
 
-- `/` is the sales landing page (features, ROI calculator, pricing).
-- `/workspace` is the product. Upload PDFs, or open `/workspace?demo=1` for a fictional demo case that works without an API key.
+| Page | What it is |
+|---|---|
+| `/` | Sales landing page with features, ROI calculator and pricing |
+| `/demo` | Public fictional demo case. Works without an API key, account or database. |
+| `/signup`, `/login` | Accounts. Each signup creates a firm account with 1 free trial case of up to 300 pages. |
+| `/workspace` | The product: upload, analyze, export. Requires sign-in. |
+| `/billing` | Credit balance, Firm plan subscription, credit packs, usage history |
 
 Tests and checks:
 
 ```bash
-npm test
+npm test                 # unit tests; database tests are skipped
+npm run test:db          # also runs the PostgreSQL integration tests (set TEST_DATABASE_URL to a throwaway DB)
 npm run typecheck
 npm run build
 ```
+
+## Accounts, credits and payments
+
+- **Accounts:** email and password, hashed with scrypt. Sessions use a random token in an httpOnly, SameSite=Lax cookie; only its SHA-256 hash is stored. Login is throttled (8 failures per email or 32 per IP per 15 minutes). Every state-changing endpoint rejects cross-site requests.
+- **Credits** (`src/lib/plans.ts`): 1 credit = 1 case of up to 1,000 pages, and larger cases cost 1 credit per started 1,000 pages. The free trial is used first, then monthly plan credits (these reset every billing cycle and don't roll over), then purchased credits (these never expire).
+- **Usage limits** (`src/lib/credits.ts`): before any AI call, the server counts the pages and takes the credits inside a row-locked transaction, so parallel uploads can't overspend. At most 2 cases per firm can process at once. If nothing could be analyzed, or the user cancels, the credit is refunded automatically.
+- **Privacy:** the database stores accounts, billing and page counts only. Case names, patient names and file names are never stored.
+
+### Stripe setup (about 10 minutes)
+
+Prices are defined in code, so you don't need to create products in the Stripe dashboard.
+
+1. Create a Stripe account and copy the **secret key** (`sk_test_...` while testing) into `STRIPE_SECRET_KEY`.
+2. In Dashboard → Developers → Webhooks, add the endpoint `https://YOUR_DOMAIN/api/stripe/webhook` with these events:
+   `checkout.session.completed`, `checkout.session.async_payment_succeeded`, `invoice.paid`, `customer.subscription.updated`, `customer.subscription.deleted`.
+   Copy its signing secret into `STRIPE_WEBHOOK_SECRET`.
+3. In Dashboard → Settings → Billing → Customer portal, turn on the portal. The "Manage subscription & invoices" button uses it.
+4. For local testing, run the Stripe CLI: `stripe listen --forward-to localhost:3000/api/stripe/webhook`, and use the `whsec_...` value it prints.
+
+Credits are granted **only** from signed webhook events. Coming back to `/billing?status=success` never adds credits by itself, and each event is processed exactly once.
 
 ## How it works
 
@@ -50,6 +78,6 @@ npm run build
 - **Compliance:** sign a BAA with Anthropic (or use Claude through AWS Bedrock / Google Vertex under your cloud BAA) and with your host. Add authentication, audit logging and encryption at rest if you ever add storage. Get SOC 2 Type I once you have paying customers.
 - **Pricing** (shown on the landing page; adjust freely): $149 per case (≤1,000 pages), $1,490/month firm plan, enterprise private deployment from $60k/year.
 - **First customers:** offer 3–5 PI firms a free pilot on closed cases. Measure the hours saved and use those numbers as case studies.
-- **Next features buyers ask for:** user accounts and teams, Stripe billing, demand-letter draft generation, deposition summaries, integrations with Clio, Filevine and Litify, and OCR quality warnings for faxes.
+- **Still to build:** password reset by email, inviting teammates to a firm account, Terms/Privacy pages, demand-letter draft generation, deposition summaries, integrations with Clio, Filevine and Litify, and OCR quality warnings for faxes.
 
 > AI-assisted output. Every entry must be verified against the cited page by a qualified reviewer. It is not medical or legal advice.

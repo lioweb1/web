@@ -1,15 +1,17 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
-  AlertTriangle, CalendarClock, Download, FileJson, FileSearch, FileText, FolderOpen, Gauge, ListOrdered, Loader2, Mail, Receipt, Settings2, Sparkles, Upload, X,
+  AlertTriangle, CalendarClock, CreditCard, LogOut, Download, FileJson, FileSearch, FileText, FolderOpen, Gauge, ListOrdered, Loader2, Mail, Receipt, Settings2, Sparkles, Upload, X,
 } from "lucide-react";
 import { Logo } from "@/components/logo";
 import { analyzeCase, type CaseAnalysis, type RedFlag } from "@/lib/analyze";
 import { DEMO_CASE } from "@/lib/demo";
 import { DEFAULT_FIRM, recordsRequestLetter, type FirmInfo } from "@/lib/letters";
 import type { CaseExtraction, Encounter, SourceRef } from "@/lib/schema";
+import { PAGES_PER_CREDIT, planSpend } from "@/lib/plans";
 
 type Tab = "overview" | "chronology" | "gaps" | "missing" | "billing";
 type Progress = { done: number; total: number; label: string };
@@ -28,33 +30,31 @@ function download(name: string, data: Blob | string, type = "text/plain") {
 
 const safeName = (s: string) => s.replace(/[^\w\- ]+/g, "").trim().replace(/\s+/g, "_") || "case";
 
-export function Workspace() {
-  const params = useSearchParams();
-  const [caseData, setCaseData] = useState<CaseExtraction | null>(null);
+export type Account = { name: string; firm: string; plan: string; credits: { trial: number; plan: number; purchased: number } };
+
+export function Workspace({ mode, live = false, account }: { mode: "demo" | "app"; live?: boolean; account?: Account }) {
+  const router = useRouter();
+  const demo = mode === "demo";
+  const [caseData, setCaseData] = useState<CaseExtraction | null>(demo ? DEMO_CASE : null);
   const [tab, setTab] = useState<Tab>("overview");
   const [gapDays, setGapDays] = useState(30);
   const [firm, setFirm] = useState<FirmInfo>(DEFAULT_FIRM);
   const [showSettings, setShowSettings] = useState(false);
-  const [live, setLive] = useState<boolean | null>(null);
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState<Progress | null>(null);
   const [warnings, setWarnings] = useState<string[]>([]);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<{ message: string; billing?: boolean } | null>(null);
   const [files, setFiles] = useState<File[]>([]);
   const [caseName, setCaseName] = useState("");
   const fileUrls = useRef(new Map<string, string>());
   const abort = useRef<AbortController | null>(null);
 
   useEffect(() => {
-    fetch("/api/status").then((r) => r.json()).then((s) => setLive(Boolean(s.live))).catch(() => setLive(false));
     try {
       const f = localStorage.getItem("medchrono.firm");
       if (f) setFirm({ ...DEFAULT_FIRM, ...JSON.parse(f) });
     } catch {}
   }, []);
-  useEffect(() => {
-    if (params.get("demo") === "1") setCaseData(DEMO_CASE);
-  }, [params]);
   useEffect(() => {
     try {
       localStorage.setItem("medchrono.firm", JSON.stringify(firm));
@@ -88,6 +88,10 @@ export function Workspace() {
       const res = await fetch("/api/analyze", { method: "POST", body: form, signal: abort.current.signal });
       if (!res.ok || !res.body) {
         const j = await res.json().catch(() => ({}));
+        if (res.status === 402) {
+          setError({ message: j.error, billing: true });
+          return;
+        }
         throw new Error(j.error || `Request failed (${res.status})`);
       }
       const reader = res.body.getReader();
@@ -109,11 +113,13 @@ export function Workspace() {
           else if (ev.type === "result") {
             setCaseData(ev.extraction);
             setTab("overview");
+            router.refresh(); // updates the credit balance in the header
           }
         }
       }
     } catch (e) {
-      if ((e as Error).name !== "AbortError") setError((e as Error).message);
+      if ((e as Error).name !== "AbortError") setError({ message: (e as Error).message });
+      router.refresh();
     } finally {
       setBusy(false);
       setProgress(null);
@@ -128,7 +134,7 @@ export function Workspace() {
         setCaseData(x);
         setTab("overview");
       })
-      .catch(() => setError("That file is not a MedChrono case file."));
+      .catch(() => setError({ message: "That file is not a MedChrono case file." }));
   }
 
   async function exportDocx() {
@@ -149,18 +155,31 @@ export function Workspace() {
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-3">
           <Logo />
           <div className="flex items-center gap-2 text-sm">
-            {live !== null && (
-              <span className={`hidden rounded-full px-2.5 py-1 text-xs font-medium sm:inline ${live ? "bg-teal-soft text-teal" : "bg-warn-soft text-warn"}`}>
-                {live ? "AI connected" : "Demo mode — add ANTHROPIC_API_KEY to analyze real files"}
-              </span>
-            )}
-            <button onClick={() => setShowSettings(true)} className="inline-flex items-center gap-1.5 rounded-lg border border-line px-3 py-1.5 hover:border-navy">
-              <Settings2 className="h-4 w-4" /> Settings
-            </button>
-            {caseData && (
-              <button onClick={() => { setCaseData(null); setFiles([]); }} className="whitespace-nowrap rounded-lg bg-navy px-3 py-1.5 font-medium text-white">
-                New case
-              </button>
+            {demo ? (
+              <>
+                <span className="hidden rounded-full bg-warn-soft px-2.5 py-1 text-xs font-medium text-warn sm:inline">Demo case — fictional data</span>
+                <Link href="/signup" className="whitespace-nowrap rounded-lg bg-teal px-3 py-1.5 font-medium text-white">Try your own records free</Link>
+              </>
+            ) : (
+              <>
+                {account && <CreditBadge a={account} />}
+                <button onClick={() => setShowSettings(true)} className="inline-flex items-center gap-1.5 rounded-lg border border-line px-3 py-1.5 hover:border-navy" aria-label="Settings">
+                  <Settings2 className="h-4 w-4" /> <span className="hidden sm:inline">Settings</span>
+                </button>
+                {caseData && (
+                  <button onClick={() => { setCaseData(null); setFiles([]); }} className="whitespace-nowrap rounded-lg bg-navy px-3 py-1.5 font-medium text-white">
+                    New case
+                  </button>
+                )}
+                <button
+                  onClick={async () => { await fetch("/api/auth/logout", { method: "POST" }); window.location.href = "/"; }}
+                  className="rounded-lg p-1.5 text-muted hover:text-ink"
+                  aria-label="Sign out"
+                  title="Sign out"
+                >
+                  <LogOut className="h-4 w-4" />
+                </button>
+              </>
             )}
           </div>
         </div>
@@ -180,6 +199,7 @@ export function Workspace() {
           onRun={run}
           onCancel={() => abort.current?.abort()}
           onDemo={() => setCaseData(DEMO_CASE)}
+          credits={account?.credits}
           onOpenCase={openCaseFile}
         />
       ) : (
@@ -245,13 +265,43 @@ export function Workspace() {
 
 /* ------------------------------------------------------------------ */
 
+function CreditBadge({ a }: { a: Account }) {
+  const paid = a.credits.plan + a.credits.purchased;
+  const label = paid > 0 ? `${paid} credit${paid === 1 ? "" : "s"}` : a.credits.trial > 0 ? "1 free case" : "0 credits";
+  return (
+    <Link href="/billing" className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg border px-3 py-1.5 ${paid + a.credits.trial === 0 ? "border-danger/40 text-danger" : "border-line hover:border-navy"}`}>
+      <CreditCard className="h-4 w-4" /> {label}
+    </Link>
+  );
+}
+
 function UploadPanel(props: {
-  live: boolean | null; busy: boolean; progress: Progress | null; warnings: string[]; error: string | null;
+  live: boolean; busy: boolean; progress: Progress | null; warnings: string[]; error: { message: string; billing?: boolean } | null;
+  credits?: { trial: number; plan: number; purchased: number };
   files: File[]; setFiles: (f: File[]) => void; caseName: string; setCaseName: (s: string) => void;
   onRun: () => void; onCancel: () => void; onDemo: () => void; onOpenCase: (f: File) => void;
 }) {
   const { live, busy, progress, files, setFiles } = props;
   const [drag, setDrag] = useState(false);
+  const [pageCounts, setPageCounts] = useState<Record<string, number | null>>({});
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const { PDFDocument } = await import("pdf-lib");
+      for (const f of files) {
+        if (f.name in pageCounts) continue;
+        let n: number | null = null;
+        try {
+          n = (await PDFDocument.load(await f.arrayBuffer(), { ignoreEncryption: true, updateMetadata: false })).getPageCount();
+        } catch {}
+        if (alive) setPageCounts((p) => ({ ...p, [f.name]: n }));
+      }
+    })();
+    return () => { alive = false; };
+  }, [files]); // eslint-disable-line react-hooks/exhaustive-deps
+  const totalPages = files.reduce((s, f) => s + (pageCounts[f.name] ?? 0), 0);
+  const counting = files.some((f) => !(f.name in pageCounts));
+  const estimate = files.length && !counting ? estimateCost(totalPages, props.credits) : null;
   const add = (list: FileList | null) => {
     if (!list) return;
     const pdfs = [...list].filter((f) => f.type === "application/pdf" || f.name.toLowerCase().endsWith(".pdf"));
@@ -291,7 +341,7 @@ function UploadPanel(props: {
             <li key={f.name} className="flex items-center justify-between px-4 py-2.5">
               <span className="flex items-center gap-2"><FileText className="h-4 w-4 text-muted" /> {f.name}</span>
               <span className="flex items-center gap-3 text-muted">
-                {(f.size / 1024 / 1024).toFixed(1)} MB
+                {f.name in pageCounts ? (pageCounts[f.name] === null ? "unreadable" : `${pageCounts[f.name]!.toLocaleString()} pp.`) : "…"} · {(f.size / 1024 / 1024).toFixed(1)} MB
                 {!busy && <button onClick={() => setFiles(files.filter((x) => x !== f))} aria-label={`Remove ${f.name}`}><X className="h-4 w-4" /></button>}
               </span>
             </li>
@@ -310,14 +360,24 @@ function UploadPanel(props: {
         </div>
       )}
       {props.warnings.length > 0 && <div className="mt-4 space-y-1 text-sm text-warn">{props.warnings.map((w) => <div key={w}>⚠ {w}</div>)}</div>}
-      {props.error && <div className="mt-4 rounded-lg bg-danger-soft p-3 text-sm text-danger">{props.error}</div>}
+      {estimate && !busy && (
+        <div className={`mt-4 rounded-lg p-3 text-sm ${estimate.ok ? "bg-teal-soft text-teal" : "bg-warn-soft text-warn"}`}>
+          {estimate.text}
+          {!estimate.ok && <> <Link href="/billing" className="font-semibold underline">Buy credits</Link></>}
+        </div>
+      )}
+      {props.error && (
+        <div className="mt-4 rounded-lg bg-danger-soft p-3 text-sm text-danger">
+          {props.error.message} {props.error.billing && <Link href="/billing" className="font-semibold underline">Buy credits →</Link>}
+        </div>
+      )}
 
       <div className="mt-6 flex flex-wrap gap-3">
         <button
           onClick={props.onRun}
-          disabled={busy || files.length === 0 || live === false}
+          disabled={busy || files.length === 0 || !live || (estimate !== null && !estimate.ok)}
           className="inline-flex items-center gap-2 rounded-lg bg-navy px-5 py-2.5 font-medium text-white disabled:opacity-40"
-          title={live === false ? "Add ANTHROPIC_API_KEY on the server to analyze real files" : undefined}
+          title={!live ? "The server has no ANTHROPIC_API_KEY configured" : undefined}
         >
           <Sparkles className="h-4 w-4" /> Build chronology
         </button>
@@ -331,6 +391,18 @@ function UploadPanel(props: {
       </div>
     </main>
   );
+}
+
+function estimateCost(pages: number, c?: { trial: number; plan: number; purchased: number }): { ok: boolean; text: string } | null {
+  if (!c || pages === 0) return null;
+  const r = planSpend(c, pages);
+  if (!r.ok) return { ok: false, text: r.reason };
+  return {
+    ok: true,
+    text: r.spend.trial
+      ? `${pages.toLocaleString()} pages — covered by your free trial case.`
+      : `${pages.toLocaleString()} pages — this case will use ${r.spend.credits} credit${r.spend.credits > 1 ? "s" : ""} (1 credit per ${PAGES_PER_CREDIT.toLocaleString()} pages).`,
+  };
 }
 
 function CaseHeader({ x, a }: { x: CaseExtraction; a: CaseAnalysis }) {

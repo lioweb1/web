@@ -3,6 +3,8 @@ import { ArrowRight, Check, Clock, FileSearch, FileWarning, Gauge, Lock, Receipt
 import { Logo } from "@/components/logo";
 import { RoiCalculator } from "@/components/roi-calculator";
 
+const SALES_EMAIL = process.env.NEXT_PUBLIC_SALES_EMAIL || "sales@example.com";
+
 const features = [
   {
     icon: FileSearch,
@@ -49,10 +51,10 @@ const plans = [
   {
     name: "Per case",
     price: "$149",
-    unit: "per case up to 1,000 pages",
+    unit: "per case up to 1,000 pages (+1 credit per extra 1,000)",
     body: "For solo attorneys and small firms.",
-    items: ["Full chronology + citations", "Gap & red-flag analysis", "Missing-records letters", "Word + CSV export", "$0.10 / page above 1,000"],
-    cta: "Start a case",
+    items: ["Full chronology + citations", "Gap & red-flag analysis", "Missing-records letters", "Word + CSV export", "Packs of 5 or 20 cases save up to 16%"],
+    cta: "Start free", href: "/signup",
   },
   {
     name: "Firm",
@@ -60,7 +62,7 @@ const plans = [
     unit: "per month, 25 cases included",
     body: "For PI and workers' comp firms with steady volume.",
     items: ["Everything in Per case", "Firm letterhead on letters", "Up to 10 users", "Priority processing", "Onboarding call"],
-    cta: "Book a demo",
+    cta: "Start free", href: "/signup",
     featured: true,
   },
   {
@@ -69,7 +71,7 @@ const plans = [
     unit: "per year",
     body: "Insurers, TPAs, IME vendors and large firms.",
     items: ["Unlimited volume", "Private deployment in your cloud", "BAA & security review", "Custom report templates", "API & case-management integration"],
-    cta: "Contact sales",
+    cta: "Contact sales", href: `mailto:${SALES_EMAIL}?subject=MedChrono%20Enterprise`,
   },
 ];
 
@@ -85,9 +87,10 @@ export default function Landing() {
             <a href="#pricing" className="hover:text-ink">Pricing</a>
             <a href="#security" className="hover:text-ink">Security</a>
           </nav>
-          <Link href="/workspace" className="rounded-lg bg-navy px-4 py-2 text-sm font-medium text-white hover:bg-ink">
-            Open workspace
-          </Link>
+          <div className="flex items-center gap-2">
+            <Link href="/login" className="rounded-lg px-3 py-2 text-sm font-medium text-muted hover:text-ink">Sign in</Link>
+            <Link href="/signup" className="rounded-lg bg-navy px-4 py-2 text-sm font-medium text-white hover:bg-ink">Start free</Link>
+          </div>
         </div>
       </header>
 
@@ -103,11 +106,11 @@ export default function Landing() {
           the gaps the defense will attack, and the billing errors that shrink your damages.
         </p>
         <div className="mt-8 flex flex-wrap gap-3">
-          <Link href="/workspace?demo=1" className="inline-flex items-center gap-2 rounded-lg bg-teal px-5 py-3 font-medium text-white hover:brightness-110">
+          <Link href="/demo" className="inline-flex items-center gap-2 rounded-lg bg-teal px-5 py-3 font-medium text-white hover:brightness-110">
             See a live demo case <ArrowRight className="h-4 w-4" />
           </Link>
-          <Link href="/workspace" className="inline-flex items-center gap-2 rounded-lg border border-line bg-white px-5 py-3 font-medium hover:border-navy">
-            Upload your records
+          <Link href="/signup" className="inline-flex items-center gap-2 rounded-lg border border-line bg-white px-5 py-3 font-medium hover:border-navy">
+            First case free
           </Link>
         </div>
         <dl className="mt-14 grid max-w-3xl grid-cols-2 gap-6 md:grid-cols-4">
@@ -186,7 +189,7 @@ export default function Landing() {
       <section id="pricing" className="border-t border-line bg-white">
         <div className="mx-auto max-w-6xl px-4 py-20">
           <h2 className="font-serif text-3xl font-bold md:text-4xl">Simple pricing</h2>
-          <p className="mt-3 text-muted">Cheaper than one hour of a nurse consultant per case.</p>
+          <p className="mt-3 text-muted">Your first case (up to 300 pages) is free. Cheaper than one hour of a nurse consultant per case.</p>
           <div className="mt-10 grid gap-6 md:grid-cols-3">
             {plans.map((p) => (
               <div key={p.name} className={`flex flex-col rounded-2xl border p-6 ${p.featured ? "border-teal shadow-lg ring-1 ring-teal" : "border-line"}`}>
@@ -201,7 +204,7 @@ export default function Landing() {
                     </li>
                   ))}
                 </ul>
-                <Link href="/workspace" className={`mt-6 rounded-lg px-4 py-2.5 text-center text-sm font-medium ${p.featured ? "bg-teal text-white" : "border border-line hover:border-navy"}`}>
+                <Link href={p.href} className={`mt-6 rounded-lg px-4 py-2.5 text-center text-sm font-medium ${p.featured ? "bg-teal text-white" : "border border-line hover:border-navy"}`}>
                   {p.cta}
                 </Link>
               </div>
@@ -238,7 +241,7 @@ export default function Landing() {
         <div className="rounded-2xl bg-teal px-8 py-12 text-center text-white">
           <h2 className="font-serif text-3xl font-bold">See your own case in an hour.</h2>
           <p className="mx-auto mt-2 max-w-xl text-white/85">Open the demo case, or upload a real record set and watch the chronology build.</p>
-          <Link href="/workspace?demo=1" className="mt-6 inline-flex items-center gap-2 rounded-lg bg-white px-5 py-3 font-medium text-teal">
+          <Link href="/demo" className="mt-6 inline-flex items-center gap-2 rounded-lg bg-white px-5 py-3 font-medium text-teal">
             Open the demo <ArrowRight className="h-4 w-4" />
           </Link>
         </div>
