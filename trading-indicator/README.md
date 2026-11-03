@@ -1,4 +1,4 @@
-# Apex Pulse 5M PRO (MetaTrader 4)
+# Apex Pulse 5M PRO (MetaTrader 4 & 5)
 
 Apex Pulse 5M is a non-repainting CALL/PUT (BUY/SELL) indicator for 5-minute binary options and short-term forex trading. It comes with a dashboard and a win-rate tracker. On every closed candle it scores the next candle from 0 to 100 for each direction, and prints an arrow only when a high-confidence setup appears.
 
@@ -6,19 +6,30 @@ Apex Pulse 5M is a non-repainting CALL/PUT (BUY/SELL) indicator for 5-minute bin
 
 ## Files
 
-| File | Purpose |
-|------|---------|
-| `MT4/Indicators/ApexPulse5M.mq4` | Indicator source code |
+| File | Platform | Purpose |
+|------|----------|---------|
+| `MT4/Indicators/ApexPulse5M.mq4` | MetaTrader 4 | Indicator source code |
+| `MT5/Indicators/ApexPulse5M_MT5.mq5` | MetaTrader 5 | Indicator source code (same logic, same settings) |
+
+Both versions share the same signal engine, filters, dashboard and inputs, so the signals are identical on the same broker data.
 
 ## Install
 
+**MetaTrader 4**
 1. In MT4: **File → Open Data Folder → MQL4 → Indicators**.
 2. Copy `ApexPulse5M.mq4` into that folder.
 3. Open MetaEditor (F4), open the file, and press **Compile** (F7). This creates `ApexPulse5M.ex4`.
 4. In MT4, refresh the Navigator, then drag **Apex Pulse 5M** onto an **M5** chart.
-5. For push alerts, set up your MetaQuotes ID under **Tools → Options → Notifications**.
 
-> To sell it or hand it out, give buyers only the compiled `.ex4` file and keep the `.mq4` source private.
+**MetaTrader 5**
+1. In MT5: **File → Open Data Folder → MQL5 → Indicators**.
+2. Copy `ApexPulse5M_MT5.mq5` into that folder.
+3. Open MetaEditor (F4), open the file, and press **Compile** (F7). This creates `ApexPulse5M_MT5.ex5`.
+4. In MT5, refresh the Navigator, then drag **Apex Pulse 5M** onto an **M5** chart. The first load can take a few seconds while M15/H1 history downloads; the indicator waits for it so that history is calculated correctly.
+
+For push alerts (both platforms), set up your MetaQuotes ID under **Tools → Options → Notifications**.
+
+> To sell it or hand it out, give buyers only the compiled `.ex4` / `.ex5` file and keep the `.mq4` / `.mq5` source private.
 
 ## How the signal works
 
