@@ -1,0 +1,2 @@
+# This folder holds code, config and secrets. It must never be served over the web.
+Require all denied

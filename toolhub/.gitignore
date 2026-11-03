@@ -1,0 +1,5 @@
+app/config.php
+app/vendor/
+app/storage/*
+!app/storage/.htaccess
+!app/storage/.gitkeep
