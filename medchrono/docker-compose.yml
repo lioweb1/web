@@ -1,0 +1,24 @@
+# Local production-like run:  docker compose up --build   →  http://localhost:3000
+services:
+  db:
+    image: public.ecr.aws/docker/library/postgres:17
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: medchrono
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      retries: 10
+  app:
+    build: .
+    ports: ["3000:3000"]
+    env_file: [.env]
+    environment:
+      DATABASE_URL: postgres://postgres:postgres@db:5432/medchrono
+      DATABASE_SSL: "false"
+      APP_URL: http://localhost:3000
+    depends_on:
+      db: { condition: service_healthy }
+volumes:
+  pgdata:

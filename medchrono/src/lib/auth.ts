@@ -1,6 +1,7 @@
 import { createHash, randomBytes, scrypt as scryptCb, timingSafeEqual } from "node:crypto";
 import { promisify } from "node:util";
 import { db, tx, type Db } from "./db";
+import { TERMS_VERSION } from "./legal";
 
 const scrypt = promisify(scryptCb) as (pw: string, salt: Buffer, len: number, opts: { N: number; r: number; p: number; maxmem: number }) => Promise<Buffer>;
 const SCRYPT = { N: 2 ** 15, r: 8, p: 1, maxmem: 64 * 1024 * 1024 };
@@ -92,20 +93,25 @@ export class AuthError extends Error {
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-export async function signUp(input: { email: string; password: string; name: string; firm: string }) {
+export function validatePassword(pw: string): void {
+  if (pw.length < 10) throw new AuthError("Password must be at least 10 characters.");
+  if (pw.length > 200) throw new AuthError("Password is too long.");
+}
+
+export async function signUp(input: { email: string; password: string; name: string; firm: string; acceptTerms: boolean }) {
   const email = input.email.trim().toLowerCase();
   const name = input.name.trim().slice(0, 120);
   const firm = input.firm.trim().slice(0, 160);
   if (!EMAIL_RE.test(email) || email.length > 254) throw new AuthError("Enter a valid email address.");
   if (!name || !firm) throw new AuthError("Name and firm are required.");
-  if (input.password.length < 10) throw new AuthError("Password must be at least 10 characters.");
-  if (input.password.length > 200) throw new AuthError("Password is too long.");
+  if (!input.acceptTerms) throw new AuthError("Please accept the Terms of Service and Privacy Policy.");
+  validatePassword(input.password);
   const hash = await hashPassword(input.password);
   return tx(async (c) => {
     const exists = await c.query("select 1 from users where lower(email) = $1", [email]);
     if (exists.rowCount) throw new AuthError("An account with this email already exists.", 409);
     const org = await c.query("insert into orgs (name) values ($1) returning id", [firm]);
-    const user = await c.query("insert into users (org_id, email, name, password_hash, role) values ($1, $2, $3, $4, 'owner') returning id", [org.rows[0].id, email, name, hash]);
+    const user = await c.query("insert into users (org_id, email, name, password_hash, role, terms_version, terms_accepted_at) values ($1, $2, $3, $4, 'owner', $5, now()) returning id", [org.rows[0].id, email, name, hash, TERMS_VERSION]);
     await c.query("insert into usage_events (org_id, user_id, kind, credits, note) values ($1, $2, 'adjustment', 1, 'Free trial credit')", [org.rows[0].id, user.rows[0].id]);
     return createSession(user.rows[0].id, c);
   });
@@ -134,6 +140,9 @@ export async function logIn(emailIn: string, password: string, ip: string) {
     throw new AuthError("Incorrect email or password.", 401);
   }
   await c.query("delete from login_attempts where key = $1", [keys[0]]);
+  // Housekeeping (cheap, indexed): drop expired sessions and used/expired reset links.
+  await c.query("delete from sessions where expires_at < now()");
+  await c.query("delete from password_resets where expires_at < now() - interval '1 day'");
   return createSession(u.rows[0].id);
 }
 

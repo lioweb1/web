@@ -1,10 +1,11 @@
 import { getStripe, handleStripeEvent, stripeConfigured } from "@/lib/billing";
+import { env } from "@/lib/env";
 
 export const runtime = "nodejs";
 
 /** Stripe → us. Verifies the signature on the raw body before touching any credits. */
 export async function POST(req: Request) {
-  const secret = process.env.STRIPE_WEBHOOK_SECRET;
+  const secret = env("STRIPE_WEBHOOK_SECRET");
   if (!stripeConfigured() || !secret) return new Response("Stripe not configured", { status: 503 });
   const sig = req.headers.get("stripe-signature");
   if (!sig) return new Response("Missing signature", { status: 400 });

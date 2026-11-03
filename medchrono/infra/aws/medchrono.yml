@@ -1,0 +1,468 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  MedChrono AI on AWS - VPC, HTTPS load balancer, ECS Fargate service, encrypted
+  PostgreSQL (RDS), Secrets Manager, ECR and CloudWatch logs. Designed for
+  HIPAA-eligible services; sign the AWS BAA in AWS Artifact before storing PHI.
+
+Parameters:
+  AppName:
+    Type: String
+    Default: medchrono
+    AllowedPattern: "^[a-z][a-z0-9-]{1,20}$"
+    Description: Lower-case name used for resources.
+  DomainName:
+    Type: String
+    Description: Public hostname of the app, e.g. app.yourcompany.com (used for links in emails and Stripe redirects).
+  CertificateArn:
+    Type: String
+    AllowedPattern: "^arn:aws:acm:.+"
+    Description: ACM certificate ARN for DomainName, in this region.
+  ImageTag:
+    Type: String
+    Default: latest
+    Description: Tag of the image in the stack's ECR repository. Leave DesiredCount at 0 until you have pushed one.
+  DesiredCount:
+    Type: Number
+    Default: 0
+    MinValue: 0
+    MaxValue: 20
+    Description: Number of app containers. Start with 0, push the image, then update the stack to 2.
+  TaskCpu:
+    Type: String
+    Default: "1024"
+    AllowedValues: ["512", "1024", "2048", "4096"]
+  TaskMemory:
+    Type: String
+    Default: "2048"
+    AllowedValues: ["1024", "2048", "4096", "8192", "16384"]
+    Description: MiB. Large record sets are held in memory while processing; use 4096+ for 1,000+ page cases.
+  DbInstanceClass:
+    Type: String
+    Default: db.t4g.micro
+  DbMultiAz:
+    Type: String
+    Default: "false"
+    AllowedValues: ["true", "false"]
+    Description: Standby database in a second AZ (recommended in production, doubles DB cost).
+  EmailFrom:
+    Type: String
+    Default: ""
+    Description: Sender for password resets and invitations, e.g. "MedChrono AI <no-reply@yourcompany.com>". Verify the domain in Amazon SES first.
+  SmtpHost:
+    Type: String
+    Default: ""
+    Description: e.g. email-smtp.us-east-1.amazonaws.com (Amazon SES SMTP endpoint). Leave empty to disable email.
+  AlarmEmail:
+    Type: String
+    Default: ""
+    Description: Optional email for alarms (unhealthy hosts, 5xx errors, database CPU).
+
+Conditions:
+  HasEmail: !Not [!Equals [!Ref SmtpHost, ""]]
+  HasAlarmEmail: !Not [!Equals [!Ref AlarmEmail, ""]]
+  IsMultiAz: !Equals [!Ref DbMultiAz, "true"]
+
+Resources:
+  # ---------------------------------------------------------------- network
+  Vpc:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.40.0.0/16
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      Tags: [{ Key: Name, Value: !Ref AppName }]
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+  GatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties: { VpcId: !Ref Vpc, InternetGatewayId: !Ref InternetGateway }
+
+  PublicSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: 10.40.0.0/20
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      MapPublicIpOnLaunch: true
+      Tags: [{ Key: Name, Value: !Sub "${AppName}-public-a" }]
+  PublicSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: 10.40.16.0/20
+      AvailabilityZone: !Select [1, !GetAZs ""]
+      MapPublicIpOnLaunch: true
+      Tags: [{ Key: Name, Value: !Sub "${AppName}-public-b" }]
+  PrivateSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: 10.40.128.0/20
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      Tags: [{ Key: Name, Value: !Sub "${AppName}-private-a" }]
+  PrivateSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: 10.40.144.0/20
+      AvailabilityZone: !Select [1, !GetAZs ""]
+      Tags: [{ Key: Name, Value: !Sub "${AppName}-private-b" }]
+
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties: { VpcId: !Ref Vpc }
+  PublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: GatewayAttachment
+    Properties: { RouteTableId: !Ref PublicRouteTable, DestinationCidrBlock: 0.0.0.0/0, GatewayId: !Ref InternetGateway }
+  PublicSubnetARoutes:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties: { SubnetId: !Ref PublicSubnetA, RouteTableId: !Ref PublicRouteTable }
+  PublicSubnetBRoutes:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties: { SubnetId: !Ref PublicSubnetB, RouteTableId: !Ref PublicRouteTable }
+  # Private subnets have no internet route: only the database lives there.
+  PrivateRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties: { VpcId: !Ref Vpc }
+  PrivateSubnetARoutes:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties: { SubnetId: !Ref PrivateSubnetA, RouteTableId: !Ref PrivateRouteTable }
+  PrivateSubnetBRoutes:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties: { SubnetId: !Ref PrivateSubnetB, RouteTableId: !Ref PrivateRouteTable }
+
+  # ---------------------------------------------------------------- security groups
+  LoadBalancerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Public HTTPS
+      VpcId: !Ref Vpc
+      SecurityGroupIngress:
+        - { IpProtocol: tcp, FromPort: 443, ToPort: 443, CidrIp: 0.0.0.0/0 }
+        - { IpProtocol: tcp, FromPort: 80, ToPort: 80, CidrIp: 0.0.0.0/0 }
+  AppSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: App containers - reachable only from the load balancer
+      VpcId: !Ref Vpc
+      SecurityGroupIngress:
+        - { IpProtocol: tcp, FromPort: 3000, ToPort: 3000, SourceSecurityGroupId: !Ref LoadBalancerSecurityGroup }
+  DatabaseSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: PostgreSQL - reachable only from the app
+      VpcId: !Ref Vpc
+      SecurityGroupIngress:
+        - { IpProtocol: tcp, FromPort: 5432, ToPort: 5432, SourceSecurityGroupId: !Ref AppSecurityGroup }
+
+  # ---------------------------------------------------------------- secrets
+  DatabaseSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: !Sub "${AppName}/database"
+      GenerateSecretString:
+        SecretStringTemplate: '{"username":"medchrono"}'
+        GenerateStringKey: password
+        PasswordLength: 32
+        ExcludePunctuation: true
+
+  AppSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: !Sub "${AppName}/app"
+      Description: >
+        Replace the REPLACE_ME values after the stack is created, then redeploy the service.
+      SecretString: >-
+        {"ANTHROPIC_API_KEY":"REPLACE_ME","STRIPE_SECRET_KEY":"REPLACE_ME","STRIPE_WEBHOOK_SECRET":"REPLACE_ME","SMTP_USER":"REPLACE_ME","SMTP_PASSWORD":"REPLACE_ME"}
+
+  # ---------------------------------------------------------------- database
+  DatabaseSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: Private subnets for MedChrono database
+      SubnetIds: [!Ref PrivateSubnetA, !Ref PrivateSubnetB]
+
+  DatabaseParameters:
+    Type: AWS::RDS::DBParameterGroup
+    Properties:
+      Family: postgres17
+      Description: Require TLS for all connections
+      Parameters:
+        rds.force_ssl: "1"
+
+  Database:
+    Type: AWS::RDS::DBInstance
+    DeletionPolicy: Snapshot
+    UpdateReplacePolicy: Snapshot
+    Properties:
+      Engine: postgres
+      EngineVersion: "17.6"
+      DBInstanceClass: !Ref DbInstanceClass
+      AllocatedStorage: "20"
+      MaxAllocatedStorage: 200
+      StorageType: gp3
+      StorageEncrypted: true
+      DBName: medchrono
+      MasterUsername: !Sub "{{resolve:secretsmanager:${DatabaseSecret}:SecretString:username}}"
+      MasterUserPassword: !Sub "{{resolve:secretsmanager:${DatabaseSecret}:SecretString:password}}"
+      DBSubnetGroupName: !Ref DatabaseSubnetGroup
+      DBParameterGroupName: !Ref DatabaseParameters
+      VPCSecurityGroups: [!Ref DatabaseSecurityGroup]
+      PubliclyAccessible: false
+      MultiAZ: !If [IsMultiAz, true, false]
+      BackupRetentionPeriod: 14
+      DeletionProtection: true
+      CopyTagsToSnapshot: true
+      AutoMinorVersionUpgrade: true
+      EnablePerformanceInsights: true
+
+  # ---------------------------------------------------------------- container registry & logs
+  Repository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: !Ref AppName
+      ImageScanningConfiguration: { ScanOnPush: true }
+      EncryptionConfiguration: { EncryptionType: AES256 }
+      LifecyclePolicy:
+        LifecyclePolicyText: '{"rules":[{"rulePriority":1,"description":"keep last 20 images","selection":{"tagStatus":"any","countType":"imageCountMoreThan","countNumber":20},"action":{"type":"expire"}}]}'
+
+  LogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/ecs/${AppName}"
+      RetentionInDays: 90
+
+  # ---------------------------------------------------------------- load balancer
+  LoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Scheme: internet-facing
+      Subnets: [!Ref PublicSubnetA, !Ref PublicSubnetB]
+      SecurityGroups: [!Ref LoadBalancerSecurityGroup]
+      LoadBalancerAttributes:
+        # Large cases stream progress for many minutes.
+        - { Key: idle_timeout.timeout_seconds, Value: "900" }
+        - { Key: routing.http.drop_invalid_header_fields.enabled, Value: "true" }
+
+  TargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      VpcId: !Ref Vpc
+      Port: 3000
+      Protocol: HTTP
+      TargetType: ip
+      HealthCheckPath: /api/health
+      HealthCheckIntervalSeconds: 15
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 3
+      TargetGroupAttributes:
+        # Give in-flight analyses time to finish during deploys.
+        - { Key: deregistration_delay.timeout_seconds, Value: "300" }
+
+  HttpsListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref LoadBalancer
+      Port: 443
+      Protocol: HTTPS
+      SslPolicy: ELBSecurityPolicy-TLS13-1-2-2021-06
+      Certificates: [{ CertificateArn: !Ref CertificateArn }]
+      DefaultActions: [{ Type: forward, TargetGroupArn: !Ref TargetGroup }]
+
+  HttpListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref LoadBalancer
+      Port: 80
+      Protocol: HTTP
+      DefaultActions:
+        - Type: redirect
+          RedirectConfig: { Protocol: HTTPS, Port: "443", StatusCode: HTTP_301 }
+
+  # ---------------------------------------------------------------- ECS
+  Cluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: !Ref AppName
+      ClusterSettings: [{ Name: containerInsights, Value: enabled }]
+
+  ExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement: [{ Effect: Allow, Principal: { Service: ecs-tasks.amazonaws.com }, Action: sts:AssumeRole }]
+      ManagedPolicyArns: [arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy]
+      Policies:
+        - PolicyName: read-secrets
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: secretsmanager:GetSecretValue
+                Resource: [!Ref DatabaseSecret, !Ref AppSecret]
+
+  TaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement: [{ Effect: Allow, Principal: { Service: ecs-tasks.amazonaws.com }, Action: sts:AssumeRole }]
+
+  TaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Ref AppName
+      Cpu: !Ref TaskCpu
+      Memory: !Ref TaskMemory
+      NetworkMode: awsvpc
+      RequiresCompatibilities: [FARGATE]
+      RuntimePlatform: { CpuArchitecture: X86_64, OperatingSystemFamily: LINUX }
+      ExecutionRoleArn: !GetAtt ExecutionRole.Arn
+      TaskRoleArn: !GetAtt TaskRole.Arn
+      ContainerDefinitions:
+        - Name: app
+          Image: !Sub "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${Repository}:${ImageTag}"
+          Essential: true
+          ReadonlyRootFilesystem: false
+          PortMappings: [{ ContainerPort: 3000, Protocol: tcp }]
+          StopTimeout: 120
+          Environment:
+            - { Name: APP_URL, Value: !Sub "https://${DomainName}" }
+            - { Name: PGHOST, Value: !GetAtt Database.Endpoint.Address }
+            - { Name: PGPORT, Value: !GetAtt Database.Endpoint.Port }
+            - { Name: PGDATABASE, Value: medchrono }
+            - { Name: DATABASE_SSL, Value: "true" }
+            - { Name: SMTP_HOST, Value: !If [HasEmail, !Ref SmtpHost, ""] }
+            - { Name: SMTP_PORT, Value: "587" }
+            - { Name: EMAIL_FROM, Value: !Ref EmailFrom }
+          Secrets:
+            - { Name: PGUSER, ValueFrom: !Sub "${DatabaseSecret}:username::" }
+            - { Name: PGPASSWORD, ValueFrom: !Sub "${DatabaseSecret}:password::" }
+            - { Name: ANTHROPIC_API_KEY, ValueFrom: !Sub "${AppSecret}:ANTHROPIC_API_KEY::" }
+            - { Name: STRIPE_SECRET_KEY, ValueFrom: !Sub "${AppSecret}:STRIPE_SECRET_KEY::" }
+            - { Name: STRIPE_WEBHOOK_SECRET, ValueFrom: !Sub "${AppSecret}:STRIPE_WEBHOOK_SECRET::" }
+            - { Name: SMTP_USER, ValueFrom: !Sub "${AppSecret}:SMTP_USER::" }
+            - { Name: SMTP_PASSWORD, ValueFrom: !Sub "${AppSecret}:SMTP_PASSWORD::" }
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref LogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: app
+
+  Service:
+    Type: AWS::ECS::Service
+    DependsOn: HttpsListener
+    Properties:
+      ServiceName: !Ref AppName
+      Cluster: !Ref Cluster
+      LaunchType: FARGATE
+      DesiredCount: !Ref DesiredCount
+      TaskDefinition: !Ref TaskDefinition
+      HealthCheckGracePeriodSeconds: 60
+      DeploymentConfiguration:
+        MinimumHealthyPercent: 100
+        MaximumPercent: 200
+        DeploymentCircuitBreaker: { Enable: true, Rollback: true }
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          # Public subnets with a public IP so containers can reach the AI and Stripe APIs without
+          # a NAT gateway; the security group still only accepts traffic from the load balancer.
+          AssignPublicIp: ENABLED
+          Subnets: [!Ref PublicSubnetA, !Ref PublicSubnetB]
+          SecurityGroups: [!Ref AppSecurityGroup]
+      LoadBalancers: [{ ContainerName: app, ContainerPort: 3000, TargetGroupArn: !Ref TargetGroup }]
+
+  ScalingTarget:
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    Properties:
+      ServiceNamespace: ecs
+      ScalableDimension: ecs:service:DesiredCount
+      ResourceId: !Sub "service/${Cluster}/${Service.Name}"
+      MinCapacity: !Ref DesiredCount
+      MaxCapacity: 10
+  CpuScaling:
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: !Sub "${AppName}-cpu"
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref ScalingTarget
+      TargetTrackingScalingPolicyConfiguration:
+        TargetValue: 60
+        PredefinedMetricSpecification: { PredefinedMetricType: ECSServiceAverageCPUUtilization }
+        ScaleInCooldown: 600
+        ScaleOutCooldown: 60
+
+  # ---------------------------------------------------------------- alarms
+  AlarmTopic:
+    Type: AWS::SNS::Topic
+    Condition: HasAlarmEmail
+    Properties:
+      Subscription: [{ Protocol: email, Endpoint: !Ref AlarmEmail }]
+  UnhealthyAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Condition: HasAlarmEmail
+    Properties:
+      AlarmDescription: No healthy app containers
+      Namespace: AWS/ApplicationELB
+      MetricName: HealthyHostCount
+      Dimensions:
+        - { Name: LoadBalancer, Value: !GetAtt LoadBalancer.LoadBalancerFullName }
+        - { Name: TargetGroup, Value: !GetAtt TargetGroup.TargetGroupFullName }
+      Statistic: Minimum
+      Period: 60
+      EvaluationPeriods: 3
+      Threshold: 1
+      ComparisonOperator: LessThanThreshold
+      AlarmActions: [!Ref AlarmTopic]
+  ErrorsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Condition: HasAlarmEmail
+    Properties:
+      AlarmDescription: App returning many 5xx errors
+      Namespace: AWS/ApplicationELB
+      MetricName: HTTPCode_Target_5XX_Count
+      Dimensions: [{ Name: LoadBalancer, Value: !GetAtt LoadBalancer.LoadBalancerFullName }]
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 20
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlarmTopic]
+  DatabaseCpuAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Condition: HasAlarmEmail
+    Properties:
+      AlarmDescription: Database CPU high
+      Namespace: AWS/RDS
+      MetricName: CPUUtilization
+      Dimensions: [{ Name: DBInstanceIdentifier, Value: !Ref Database }]
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 3
+      Threshold: 80
+      ComparisonOperator: GreaterThanThreshold
+      AlarmActions: [!Ref AlarmTopic]
+
+Outputs:
+  LoadBalancerDns:
+    Description: Point your DNS (CNAME or Route 53 alias) for DomainName here.
+    Value: !GetAtt LoadBalancer.DNSName
+  AppUrl:
+    Value: !Sub "https://${DomainName}"
+  EcrRepositoryUri:
+    Description: Push images here (scripts/deploy-aws.sh does it for you).
+    Value: !Sub "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${Repository}"
+  AppSecretArn:
+    Description: Fill in API keys here (Secrets Manager), then redeploy.
+    Value: !Ref AppSecret
+  StripeWebhookUrl:
+    Value: !Sub "https://${DomainName}/api/stripe/webhook"
+  ClusterName:
+    Value: !Ref Cluster
+  ServiceName:
+    Value: !GetAtt Service.Name

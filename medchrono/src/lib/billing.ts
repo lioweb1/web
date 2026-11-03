@@ -3,16 +3,18 @@ import { db, tx } from "./db";
 import { addPurchasedCredits, renewPlanCredits } from "./credits";
 import { FIRM_PLAN, PACKS, isProduct, type ProductId } from "./plans";
 import type { SessionUser } from "./auth";
+import { env } from "./env";
 
 let stripe: Stripe | null = null;
 
 export function stripeConfigured(): boolean {
-  return Boolean(process.env.STRIPE_SECRET_KEY);
+  return Boolean(env("STRIPE_SECRET_KEY"));
 }
 
 export function getStripe(): Stripe {
-  if (!process.env.STRIPE_SECRET_KEY) throw new Error("STRIPE_SECRET_KEY is not set");
-  stripe ??= new Stripe(process.env.STRIPE_SECRET_KEY);
+  const key = env("STRIPE_SECRET_KEY");
+  if (!key) throw new Error("STRIPE_SECRET_KEY is not set");
+  stripe ??= new Stripe(key);
   return stripe;
 }
 

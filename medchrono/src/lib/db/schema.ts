@@ -68,4 +68,32 @@ create table if not exists login_attempts (
   at timestamptz not null default now()
 );
 create index if not exists login_attempts_key_idx on login_attempts (key, at);
+
+-- Password reset links (single use, 1 hour).
+create table if not exists password_resets (
+  token_hash text primary key,
+  user_id uuid not null references users(id) on delete cascade,
+  expires_at timestamptz not null,
+  used_at timestamptz,
+  created_at timestamptz not null default now()
+);
+create index if not exists password_resets_user_idx on password_resets (user_id);
+
+-- Team invitations (single use, 7 days).
+create table if not exists invites (
+  id uuid primary key default gen_random_uuid(),
+  org_id uuid not null references orgs(id) on delete cascade,
+  email text not null,
+  role text not null default 'member',
+  token_hash text not null unique,
+  invited_by uuid references users(id) on delete set null,
+  expires_at timestamptz not null,
+  accepted_at timestamptz,
+  created_at timestamptz not null default now()
+);
+create index if not exists invites_org_idx on invites (org_id);
+
+-- When a user accepted the Terms (version string).
+alter table users add column if not exists terms_version text;
+alter table users add column if not exists terms_accepted_at timestamptz;
 `;

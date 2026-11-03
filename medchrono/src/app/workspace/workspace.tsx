@@ -163,6 +163,7 @@ export function Workspace({ mode, live = false, account }: { mode: "demo" | "app
             ) : (
               <>
                 {account && <CreditBadge a={account} />}
+                <Link href="/team" className="hidden rounded-lg border border-line px-3 py-1.5 hover:border-navy sm:inline-block">Team</Link>
                 <button onClick={() => setShowSettings(true)} className="inline-flex items-center gap-1.5 rounded-lg border border-line px-3 py-1.5 hover:border-navy" aria-label="Settings">
                   <Settings2 className="h-4 w-4" /> <span className="hidden sm:inline">Settings</span>
                 </button>

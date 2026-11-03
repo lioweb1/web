@@ -4,14 +4,15 @@ import { SCHEMA_SQL } from "./schema";
 let pool: pg.Pool | null = null;
 let ready: Promise<void> | null = null;
 
+/** Either DATABASE_URL, or the standard PG* variables (PGHOST, PGUSER, PGPASSWORD, PGDATABASE) as used on AWS. */
 export function dbConfigured(): boolean {
-  return Boolean(process.env.DATABASE_URL);
+  return Boolean(process.env.DATABASE_URL || process.env.PGHOST);
 }
 
 function getPool(): pg.Pool {
-  if (!process.env.DATABASE_URL) throw new Error("DATABASE_URL is not set");
+  if (!dbConfigured()) throw new Error("DATABASE_URL (or PGHOST) is not set");
   pool ??= new pg.Pool({
-    connectionString: process.env.DATABASE_URL,
+    connectionString: process.env.DATABASE_URL || undefined,
     max: Number(process.env.DATABASE_POOL_SIZE) || 10,
     ssl: process.env.DATABASE_SSL === "true" ? { rejectUnauthorized: process.env.DATABASE_SSL_INSECURE !== "true" } : undefined,
   });

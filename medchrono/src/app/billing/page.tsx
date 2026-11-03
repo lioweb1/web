@@ -1,6 +1,5 @@
-import Link from "next/link";
-import { ArrowLeft, Check } from "lucide-react";
-import { Logo } from "@/components/logo";
+import { Check } from "lucide-react";
+import { AppHeader } from "@/components/app-header";
 import { BuyButton, PortalButton } from "@/components/billing-actions";
 import { requireUser } from "@/lib/session";
 import { recentUsage } from "@/lib/credits";
@@ -17,16 +16,12 @@ export default async function BillingPage({ searchParams }: { searchParams: Prom
   const usage = await recentUsage(u.org.id);
   const o = u.org;
   const onFirm = o.plan === "firm" && o.subscription_status !== "canceled";
-  const payments = stripeConfigured();
+  const payments = stripeConfigured() && u.role === "owner";
+  const memberNote = u.role !== "owner";
 
   return (
     <div className="min-h-screen">
-      <header className="border-b border-line bg-white">
-        <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3">
-          <Logo href="/workspace" />
-          <Link href="/workspace" className="inline-flex items-center gap-1.5 text-sm text-muted hover:text-ink"><ArrowLeft className="h-4 w-4" /> Back to workspace</Link>
-        </div>
-      </header>
+      <AppHeader current="billing" />
       <main className="mx-auto max-w-5xl px-4 py-10">
         <h1 className="font-serif text-3xl font-bold">Billing</h1>
         <p className="mt-1 text-muted">{o.name} · 1 credit = 1 case of up to {PAGES_PER_CREDIT.toLocaleString()} pages</p>
@@ -37,7 +32,8 @@ export default async function BillingPage({ searchParams }: { searchParams: Prom
           </div>
         )}
         {status === "cancelled" && <div className="mt-6 rounded-xl bg-paper p-4 text-sm text-muted">Checkout cancelled. You were not charged.</div>}
-        {!payments && <div className="mt-6 rounded-xl bg-warn-soft p-4 text-sm text-warn">Payments are not configured on this server yet (STRIPE_SECRET_KEY).</div>}
+        {memberNote && <div className="mt-6 rounded-xl bg-paper p-4 text-sm text-muted">Only account owners can buy credits or change the plan. Ask an owner on your team.</div>}
+        {!memberNote && !stripeConfigured() && <div className="mt-6 rounded-xl bg-warn-soft p-4 text-sm text-warn">Payments are not configured on this server yet (STRIPE_SECRET_KEY).</div>}
 
         <section className="mt-8 grid gap-4 sm:grid-cols-3">
           {[

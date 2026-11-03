@@ -35,6 +35,10 @@ npm run dev             # http://localhost:3000
 | `/signup`, `/login` | Accounts. Each signup creates a firm account with 1 free trial case of up to 300 pages. |
 | `/workspace` | The product: upload, analyze, export. Requires sign-in. |
 | `/billing` | Credit balance, Firm plan subscription, credit packs, usage history |
+| `/team` | Invite teammates by email, change roles, remove members. Owners manage; members run cases. |
+| `/forgot-password`, `/reset-password` | Password reset by email |
+| `/terms`, `/privacy` | Terms of Service (including a Business Associate Addendum) and Privacy Policy |
+| `/api/health` | Health check for the load balancer |
 
 Tests and checks:
 
@@ -50,6 +54,8 @@ npm run build
 - **Accounts:** email and password, hashed with scrypt. Sessions use a random token in an httpOnly, SameSite=Lax cookie; only its SHA-256 hash is stored. Login is throttled (8 failures per email or 32 per IP per 15 minutes). Every state-changing endpoint rejects cross-site requests.
 - **Credits** (`src/lib/plans.ts`): 1 credit = 1 case of up to 1,000 pages, and larger cases cost 1 credit per started 1,000 pages. The free trial is used first, then monthly plan credits (these reset every billing cycle and don't roll over), then purchased credits (these never expire).
 - **Usage limits** (`src/lib/credits.ts`): before any AI call, the server counts the pages and takes the credits inside a row-locked transaction, so parallel uploads can't overspend. At most 2 cases per firm can process at once. If nothing could be analyzed, or the user cancels, the credit is refunded automatically.
+- **Password reset:** a single-use emailed link that expires after 1 hour, limited to 3 requests per hour, and stored only as a hash. The response never reveals whether an email has an account. Resetting signs the user out everywhere.
+- **Teams:** everyone in a firm shares its credits. Owners invite people by email (single-use link, valid 7 days), change roles and remove members. Removing someone signs them out at once, and a firm always keeps at least one owner. Seats: 3 on the free and pay-per-case plans, 10 on the Firm plan. Only owners can buy credits or change the plan.
 - **Privacy:** the database stores accounts, billing and page counts only. Case names, patient names and file names are never stored.
 
 ### Stripe setup (about 10 minutes)
@@ -65,6 +71,12 @@ Prices are defined in code, so you don't need to create products in the Stripe d
 
 Credits are granted **only** from signed webhook events. Coming back to `/billing?status=success` never adds credits by itself, and each event is processed exactly once.
 
+## Deploying to AWS
+
+Use `docker compose up --build` to run a production-like stack locally (app plus PostgreSQL).
+
+For production, **[infra/aws/DEPLOY.md](infra/aws/DEPLOY.md)** walks through one CloudFormation stack (`infra/aws/medchrono.yml`): an HTTPS load balancer, ECS Fargate with autoscaling, encrypted RDS PostgreSQL in private subnets, Secrets Manager, ECR, CloudWatch logs and alarms. Releases go out with `scripts/deploy-aws.sh`, which rolls back automatically if a release fails its health check.
+
 ## How it works
 
 1. `POST /api/analyze` (`src/app/api/analyze/route.ts`) receives the PDFs. It splits each one into chunks of 30 pages (`MEDCHRONO_PAGES_PER_CHUNK`) with `pdf-lib`, so page citations stay exact.
@@ -78,6 +90,7 @@ Credits are granted **only** from signed webhook events. Coming back to `/billin
 - **Compliance:** sign a BAA with Anthropic (or use Claude through AWS Bedrock / Google Vertex under your cloud BAA) and with your host. Add authentication, audit logging and encryption at rest if you ever add storage. Get SOC 2 Type I once you have paying customers.
 - **Pricing** (shown on the landing page; adjust freely): $149 per case (≤1,000 pages), $1,490/month firm plan, enterprise private deployment from $60k/year.
 - **First customers:** offer 3–5 PI firms a free pilot on closed cases. Measure the hours saved and use those numbers as case studies.
-- **Still to build:** password reset by email, inviting teammates to a firm account, Terms/Privacy pages, demand-letter draft generation, deposition summaries, integrations with Clio, Filevine and Litify, and OCR quality warnings for faxes.
+- **Legal:** `/terms` and `/privacy` are solid drafts, but a U.S. attorney must review them before launch. Set the `NEXT_PUBLIC_LEGAL_*` values so the draft banner disappears.
+- **Still to build:** demand-letter draft generation, deposition summaries, integrations with Clio, Filevine and Litify, and OCR quality warnings for faxes.
 
 > AI-assisted output. Every entry must be verified against the cited page by a qualified reviewer. It is not medical or legal advice.

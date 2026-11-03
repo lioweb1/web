@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { Loader2 } from "lucide-react";
+import { TermsCheckbox } from "./json-form";
 
 export function AuthForm({ mode, next }: { mode: "login" | "signup"; next: string }) {
   const [busy, setBusy] = useState(false);
@@ -48,6 +49,10 @@ export function AuthForm({ mode, next }: { mode: "login" | "signup"; next: strin
         <span className="text-muted">Password{mode === "signup" ? " (10+ characters)" : ""}</span>
         <input name="password" type="password" required minLength={mode === "signup" ? 10 : undefined} autoComplete={mode === "signup" ? "new-password" : "current-password"} className={input} />
       </label>
+      {mode === "signup" && <TermsCheckbox />}
+      {mode === "login" && (
+        <div className="-mt-2 text-right text-sm"><Link href="/forgot-password" className="text-teal">Forgot password?</Link></div>
+      )}
       {error && <div className="rounded-lg bg-danger-soft p-3 text-sm text-danger">{error}</div>}
       <button disabled={busy} className="flex w-full items-center justify-center gap-2 rounded-lg bg-navy py-2.5 font-medium text-white disabled:opacity-60">
         {busy && <Loader2 className="h-4 w-4 animate-spin" />}
@@ -60,9 +65,6 @@ export function AuthForm({ mode, next }: { mode: "login" | "signup"; next: strin
           <>New to MedChrono? <Link className="text-teal" href={`/signup?next=${encodeURIComponent(next)}`}>Create an account</Link></>
         )}
       </p>
-      {mode === "signup" && (
-        <p className="text-center text-xs text-muted">By creating an account you agree to the Terms of Service and Business Associate terms.</p>
-      )}
     </form>
   );
 }

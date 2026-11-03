@@ -3,6 +3,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import { PDFDocument } from "pdf-lib";
 import { ChunkExtractionSchema, type ChunkExtraction } from "./schema";
+import { env } from "./env";
 
 export const MODEL = process.env.MEDCHRONO_MODEL || "claude-opus-5-5";
 const EFFORT = (process.env.MEDCHRONO_EFFORT || "high") as "low" | "medium" | "high" | "xhigh" | "max";
@@ -28,7 +29,7 @@ function getClient(): Anthropic {
 }
 
 export function hasApiKey(): boolean {
-  return Boolean(process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN);
+  return Boolean(env("ANTHROPIC_API_KEY") || env("ANTHROPIC_AUTH_TOKEN"));
 }
 
 export type PdfChunk = { index: number; firstPage: number; lastPage: number; base64: string };

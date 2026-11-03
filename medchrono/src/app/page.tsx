@@ -248,6 +248,11 @@ export default function Landing() {
       </section>
 
       <footer className="border-t border-line py-8 text-center text-xs text-muted">
+        <div className="mb-2 flex justify-center gap-4">
+          <Link href="/terms" className="hover:text-ink">Terms</Link>
+          <Link href="/privacy" className="hover:text-ink">Privacy</Link>
+          <Link href="/login" className="hover:text-ink">Sign in</Link>
+        </div>
         © {new Date().getFullYear()} MedChrono AI · AI-assisted review; all output must be verified by a qualified professional. Not medical or legal advice.
       </footer>
     </div>

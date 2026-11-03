@@ -23,7 +23,7 @@ describe.skipIf(!url)("accounts, credits and Stripe webhooks (PostgreSQL)", asyn
   afterAll(closeDb);
 
   it("signs up with a free trial credit and a working session", async () => {
-    const s = await auth.signUp({ email, password: "correct horse battery", name: "Owner", firm: "Rivera Law" });
+    const s = await auth.signUp({ email, password: "correct horse battery", name: "Owner", firm: "Rivera Law", acceptTerms: true });
     token = s.token;
     const u = await auth.userFromToken(token);
     expect(u?.email).toBe(email);
@@ -33,8 +33,8 @@ describe.skipIf(!url)("accounts, credits and Stripe webhooks (PostgreSQL)", asyn
   });
 
   it("rejects duplicate emails (case-insensitive) and weak passwords", async () => {
-    await expect(auth.signUp({ email: email.toUpperCase(), password: "correct horse battery", name: "X", firm: "Y" })).rejects.toThrow(/already exists/);
-    await expect(auth.signUp({ email: "a@b.co", password: "short", name: "X", firm: "Y" })).rejects.toThrow(/10 characters/);
+    await expect(auth.signUp({ email: email.toUpperCase(), password: "correct horse battery", name: "X", firm: "Y", acceptTerms: true })).rejects.toThrow(/already exists/);
+    await expect(auth.signUp({ email: "a@b.co", password: "short", name: "X", firm: "Y", acceptTerms: true })).rejects.toThrow(/10 characters/);
   });
 
   it("logs in, rejects bad passwords and throttles brute force", async () => {
