@@ -14,7 +14,7 @@
       <td><?= h($o['package_name']) ?></td>
       <td><?= h($o['method_code']) ?></td>
       <td class="num"><strong><?= money($o['amount'], $o['currency']) ?></strong></td>
-      <td class="small"><?= h($o['manual_sender'] ?? '') ?><br><code><?= h($o['manual_txid'] ?? $o['gateway_txn'] ?? '') ?></code></td>
+      <td class="small"><?= h($o['manual_sender'] ?? '') ?><?php $ref = $o['manual_txid'] ?? $o['gateway_txn'] ?? ''; if ($ref !== ''): ?><br><code><?= h($ref) ?></code><?php endif; ?></td>
       <td><?php $s = $o['status']; require __DIR__ . '/../partials/status.php'; ?></td>
       <td class="small"><?= h(fmt_time($o['created_at'])) ?></td>
       <td>
