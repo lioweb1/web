@@ -36,6 +36,13 @@
       "when": 1793731427532,
       "tag": "0004_social_composer",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1793732693780,
+      "tag": "0005_social_video",
+      "breakpoints": true
     }
   ]
 }

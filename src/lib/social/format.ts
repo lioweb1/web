@@ -7,5 +7,5 @@ export function fmtSlot(date: Date, tz: string) {
   }
 }
 
-const PLATFORM_NAMES: Record<string, string> = { facebook: "Facebook", instagram: "Instagram", threads: "Threads", bluesky: "Bluesky", mastodon: "Mastodon", telegram: "Telegram", discord: "Discord", linkedin: "LinkedIn" };
+const PLATFORM_NAMES: Record<string, string> = { facebook: "Facebook", instagram: "Instagram", threads: "Threads", bluesky: "Bluesky", mastodon: "Mastodon", telegram: "Telegram", discord: "Discord", linkedin: "LinkedIn", pinterest: "Pinterest", google_business: "Google Business", wordpress: "WordPress", blogger: "Blogger", devto: "DEV", hashnode: "Hashnode", youtube: "YouTube Shorts", tiktok: "TikTok" };
 export const platformName = (id: string) => PLATFORM_NAMES[id] ?? id;

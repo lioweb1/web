@@ -8,7 +8,7 @@ import { getConnectionDef, saveConnection } from "@/lib/social/accounts";
 import { regenerateReply, sendReply, updateComment } from "@/lib/social/engage";
 import { parseLocalDateTime } from "@/lib/social/schedule";
 import { fmtSlot } from "@/lib/social/format";
-import { createComposerPost, deletePost, generateFromText, getAutopilot, publishNow, queuePublish, regeneratePost, saveAutopilot, setPostStatus, testConnection, unschedulePost, updatePost } from "@/lib/social/service";
+import { createComposerPost, prepareVideo, deletePost, generateFromText, getAutopilot, publishNow, queuePublish, regeneratePost, saveAutopilot, setPostStatus, testConnection, unschedulePost, updatePost } from "@/lib/social/service";
 
 const lines = z.preprocess((v) => (typeof v === "string" ? v.split(/[\n,]+/).map((s) => s.trim()).filter(Boolean) : []), z.array(z.string().max(300)));
 const paragraphs = z.preprocess((v) => (typeof v === "string" ? v.split(/\n\s*---\s*\n/).map((s) => s.trim()).filter(Boolean) : []), z.array(z.string().max(500)));
@@ -43,6 +43,7 @@ const settingsSchema = z.object({
   autoImage: zBool,
   brandColor: z.string().trim().max(7).default("#4f46e5"),
   utm: zBool,
+  videoSecondsPerSlide: z.coerce.number().min(1.5).max(10).default(3),
 });
 
 export const saveAutopilotAction = action({ schema: settingsSchema, role: "admin" }, async (ctx, i) => {
@@ -112,6 +113,8 @@ export const updatePostAction = action(
       shortBody: z.string().trim().min(1).max(600),
       linkedin: optText,
       instagram: optText,
+      article: z.preprocess((v) => (typeof v === "string" ? v.trim() : ""), z.string().max(12000)),
+      metaDescription: z.preprocess((v) => (typeof v === "string" ? v.trim() : ""), z.string().max(300)),
       thread: paragraphs,
       engagementComment: z.string().trim().max(1000).default(""),
       hashtags: lines,
@@ -124,8 +127,9 @@ export const updatePostAction = action(
     role: "member",
   },
   async (ctx, i) => {
-    const { postId, linkedin, instagram, hookVariants, ...patch } = i;
-    const platformTexts: Record<string, string> = {};
+    const { postId, linkedin, instagram, article, metaDescription, hookVariants, ...patch } = i;
+    // Empty strings clear a text; updatePost drops empty values.
+    const platformTexts: Record<string, string> = { article, metaDescription };
     if (linkedin) platformTexts.linkedin = linkedin;
     if (instagram) platformTexts.instagram = instagram;
     await updatePost(ctx.workspace.id, postId, {
@@ -227,3 +231,8 @@ export const composeAction = action(
     return { error: `${ok.length ? `Published on ${ok.length}, ` : ""}failed on ${failed.length}${retrying ? " — retrying automatically in a minute" : ""}.`, data };
   },
 );
+
+export const makeVideoAction = simpleAction({ schema: z.object({ postId: zUuid }), role: "member" }, async (ctx, i) => {
+  await prepareVideo(ctx.workspace.id, i.postId);
+  revalidate();
+});

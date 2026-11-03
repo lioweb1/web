@@ -15,7 +15,7 @@ export type GeneratedPost = {
   /** Post text WITHOUT the hook (the hook is prepended when publishing). */
   body: string;
   shortBody: string;
-  platformTexts: { linkedin?: string; instagram?: string };
+  platformTexts: { linkedin?: string; instagram?: string; article?: string; metaDescription?: string };
   thread: string[];
   engagementComment: string;
   hashtags: string[];
@@ -33,11 +33,13 @@ const generatedSchema = z.object({
   engagementComment: z.string().trim().max(1000).default(""),
   hashtags: z.array(z.string()).max(12).default([]),
   altText: z.string().trim().max(500).default(""),
+  article: z.string().trim().max(12000).optional(),
+  metaDescription: z.string().trim().max(300).optional(),
 });
 
 type Brand = Pick<SocialAutopilotConfig, "brandName" | "brandVoice" | "language" | "keywords" | "link">;
 
-export function systemPrompt(brand: Brand, opts: { winningHooks?: string[] } = {}) {
+export function systemPrompt(brand: Brand, opts: { winningHooks?: string[]; article?: boolean } = {}) {
   return [
     "You are an elite viral copywriter and social SEO specialist for the brand below. Your posts stop the scroll, get clicks and rank in platform search.",
     `Brand: ${brand.brandName || "(unnamed)"}`,
@@ -78,6 +80,12 @@ export function systemPrompt(brand: Brand, opts: { winningHooks?: string[] } = {
     '- "engagementComment": a first comment that asks a question to spark replies and nudges people to the profile or link',
     '- "hashtags": array of strings',
     '- "altText": string',
+    ...(opts.article
+      ? [
+          '- "article": an original, genuinely useful SEO blog article in Markdown, 700-1000 words: no H1 (the hook is the title), 3-5 "## " subheadings that contain the primaryKeyword or close variants, short paragraphs, at least one bullet list, a practical takeaway, and a closing call to action using the link token. Keyword in the first 100 words. No fluff, no fabricated facts.',
+          '- "metaDescription": 140-160 characters, includes the primaryKeyword, makes people click',
+        ]
+      : []),
   ]
     .filter((l) => l !== "")
     .join("\n");
@@ -140,6 +148,8 @@ export function parseGenerated(text: string, keywords: string[] = []): Generated
   const platformTexts: GeneratedPost["platformTexts"] = {};
   if (p.linkedin) platformTexts.linkedin = withLink(stripHook(p.linkedin));
   if (p.instagram) platformTexts.instagram = withLink(stripHook(p.instagram));
+  if (p.article) platformTexts.article = p.article;
+  if (p.metaDescription) platformTexts.metaDescription = p.metaDescription;
   return {
     primaryKeyword: p.primaryKeyword,
     hooks,
@@ -216,7 +226,7 @@ export async function complete(http: HttpClient, providerId: string, conn: Conne
   }
 }
 
-export async function generatePost(http: HttpClient, providerId: string, conn: Connection, brand: Brand, trend: TrendInput, opts: { winningHooks?: string[] } = {}): Promise<GeneratedPost> {
+export async function generatePost(http: HttpClient, providerId: string, conn: Connection, brand: Brand, trend: TrendInput, opts: { winningHooks?: string[]; article?: boolean } = {}): Promise<GeneratedPost> {
   const text = await complete(http, providerId, conn, systemPrompt(brand, opts), userPrompt(trend));
   return parseGenerated(text, brand.keywords);
 }

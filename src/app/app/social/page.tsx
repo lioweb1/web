@@ -8,6 +8,7 @@ import { composeText, engagementOf } from "@/lib/social/publish";
 import { hookScore } from "@/lib/social/ai";
 import { cardImageUrl } from "@/lib/social/image";
 import { mediaUrl } from "@/lib/social/media";
+import { VIDEO_PLATFORMS } from "@/lib/social/channels";
 import { fmtSlot, platformName } from "@/lib/social/format";
 import { TREND_SOURCES } from "@/lib/social/trends";
 import { Card, CardBody, CardHeader, PageHeader } from "@/components/ui/card";
@@ -17,9 +18,10 @@ import { ConfirmDialog } from "@/components/ui/dialog";
 import { EmptyState, Notice } from "@/components/ui/states";
 import { Tabs, fmtDate, fmtRelative } from "@/components/ui/misc";
 import { AutoRefresh } from "@/components/discovery/auto-refresh";
+import { SubmitButton } from "@/components/ui/form";
 import { CopyButton, EditPostDialog, GenerateForm } from "./forms";
 import { SocialNav } from "./nav";
-import { chooseHookAction, deletePostAction, regeneratePostAction, rejectPostAction, runScanNowAction, schedulePostAction, unschedulePostAction } from "./actions";
+import { chooseHookAction, makeVideoAction, deletePostAction, regeneratePostAction, rejectPostAction, runScanNowAction, schedulePostAction, unschedulePostAction } from "./actions";
 
 export const metadata = { title: "Social autopilot" };
 
@@ -290,6 +292,16 @@ export default async function SocialPage({ searchParams }: { searchParams: Promi
                     {img ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img src={img} alt={p.altText ?? p.hook} loading="lazy" className="aspect-square w-full rounded-md border border-border object-cover" />
+                    ) : null}
+                    {p.videoId ? (
+                      <video src={mediaUrl(p.videoId, { ext: "mp4" })} controls muted playsInline preload="metadata" className="aspect-[9/16] w-full rounded-md border border-border bg-black" />
+                    ) : canEdit && p.platforms.some((x) => VIDEO_PLATFORMS.includes(x)) && p.status !== "published" ? (
+                      <form action={makeVideoAction}>
+                        <input type="hidden" name="postId" value={p.id} />
+                        <SubmitButton size="sm" variant="secondary" className="w-full" pendingText="Rendering video…">
+                          🎬 Preview Shorts/TikTok video
+                        </SubmitButton>
+                      </form>
                     ) : null}
                     <div>
                       <p className="mb-1 text-xs font-medium text-muted">Platforms</p>

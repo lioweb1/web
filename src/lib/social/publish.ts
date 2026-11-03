@@ -18,10 +18,21 @@ export type PostContent = {
   threadMode?: boolean;
   /** Uploaded images (in order). When set, they replace `imageUrl`. */
   media?: MediaRef[];
+  /** Long-form SEO article (Markdown) for blog platforms. */
+  article?: string | null;
+  metaDescription?: string | null;
+  /** Slideshow video for YouTube Shorts / TikTok. */
+  video?: { id: string; size: number } | null;
 };
 export type MediaRef = { id: string; url: string; width: number; height: number; alt?: string | null };
 export type PublishOutcome = { id: string | null; url: string | null; cid?: string | null };
-export type PublishDeps = { http: HttpClient; resolve: Resolver; loadMedia?: (id: string) => Promise<{ data: Buffer; mime: string }> };
+export type PublishDeps = {
+  http: HttpClient;
+  resolve: Resolver;
+  loadMedia?: (id: string) => Promise<{ data: Buffer; mime: string }>;
+  /** Persist rotated tokens for this platform's connection. */
+  saveSecrets?: (patch: Record<string, string>) => Promise<void>;
+};
 
 /** Image URLs to post: uploads first, otherwise the single image (own or generated card). */
 export function imagesOf(c: PostContent, max = 10): { url: string; alt: string | null; ref?: MediaRef }[] {
@@ -33,10 +44,10 @@ const GRAPH = () => `https://graph.facebook.com/${process.env.META_GRAPH_VERSION
 const THREADS = "https://graph.threads.net/v1.0";
 
 /** Character limits (Bluesky counts graphemes; code points are close enough for our text). */
-export const LIMITS: Record<string, number> = { bluesky: 300, threads: 500, mastodon: 500, discord: 2000, telegram: 4096, instagram: 2200, linkedin: 3000, facebook: 5000 };
+export const LIMITS: Record<string, number> = { bluesky: 300, threads: 500, mastodon: 500, discord: 2000, telegram: 4096, instagram: 2200, linkedin: 3000, facebook: 5000, pinterest: 800, google_business: 1500, youtube: 4800, tiktok: 2200 };
 const SHORT = new Set(["bluesky", "threads", "mastodon"]);
 /** Platforms that show more hashtags well; others get the first few. */
-const TAG_COUNT: Record<string, number> = { instagram: 8, linkedin: 4, threads: 2, bluesky: 2, mastodon: 4, facebook: 3, telegram: 3 };
+const TAG_COUNT: Record<string, number> = { instagram: 8, linkedin: 4, threads: 2, bluesky: 2, mastodon: 4, facebook: 3, telegram: 3, pinterest: 4, youtube: 3, tiktok: 5 };
 
 const len = (s: string) => Array.from(s).length;
 
@@ -82,11 +93,11 @@ export function composeThread(platform: string, c: PostContent): string[] {
   return c.thread.map((t) => truncate(link ? t.split(LINK_TOKEN).join(link) : t.split(LINK_TOKEN).join("").trim(), LIMITS[platform] ?? 300));
 }
 
-function form(data: Record<string, string>) {
+export function form(data: Record<string, string>) {
   return new URLSearchParams(data).toString();
 }
 
-function graphError(res: { status: number; text: string }, name: string) {
+export function graphError(res: { status: number; text: string }, name: string) {
   let detail = "";
   try {
     detail = (JSON.parse(res.text) as { error?: { message?: string } }).error?.message ?? "";

@@ -11,6 +11,16 @@ type Upload = { key: string; id?: string; url?: string; preview: string; alt: st
 
 const SHORT_LIMITS: Record<string, number> = { bluesky: 300, threads: 500, mastodon: 500 };
 const MAX_IMAGES = 10;
+const NOTES: Record<string, (images: number) => string> = {
+  youtube: (n) => `Vertical slideshow video (${n || 1} slide${n > 1 ? "s" : ""}) uploaded as a Short`,
+  tiktok: (n) => `Slideshow video (${n || 1} slide${n > 1 ? "s" : ""}); private until TikTok audits your app`,
+  pinterest: (n) => (n > 1 ? `Carousel Pin (${Math.min(n, 5)} images) with your link` : "Pin with your link"),
+  google_business: () => "Update post with first image + “Learn more” button",
+  wordpress: () => "Full article: featured image, images, tags, excerpt",
+  blogger: () => "Full article with images and labels",
+  devto: () => "Article with cover; your link set as canonical URL",
+  hashnode: () => "Article with cover; your link set as original URL",
+};
 
 export function ComposeForm({ platforms, defaultPlatforms, scheduleLabel }: { platforms: Option[]; defaultPlatforms: string[]; scheduleLabel: string | null }) {
   const [state, act] = useActionState(composeAction, null);
@@ -171,7 +181,7 @@ export function ComposeForm({ platforms, defaultPlatforms, scheduleLabel }: { pl
                 />
                 {selected.includes(p.id) ? (
                   <p className="pl-6 text-xs text-muted">
-                    {p.id === "instagram" && !ready.length ? "Uses the branded image card (no image uploaded)" : p.id === "linkedin" && ready.length ? "Text + link only (images not supported here)" : parts && parts > 1 ? `Thread of ~${Math.min(parts, 11)} posts` : limit && len(lead) > 170 ? "Text shortened, rest as a thread" : (p.note ?? "")}
+                    {NOTES[p.id]?.(ready.length) ?? (p.id === "instagram" && !ready.length ? "Uses the branded image card (no image uploaded)" : p.id === "linkedin" && ready.length ? "Text + link only (images not supported here)" : parts && parts > 1 ? `Thread of ~${Math.min(parts, 11)} posts` : limit && len(lead) > 170 ? "Text shortened, rest as a thread" : (p.note ?? ""))}
                   </p>
                 ) : null}
               </div>

@@ -13,7 +13,7 @@ export type HttpResponse = {
 };
 
 export type HttpRequest = {
-  method?: "GET" | "HEAD" | "POST";
+  method?: "GET" | "HEAD" | "POST" | "PUT";
   headers?: Record<string, string>;
   body?: string | Uint8Array<ArrayBuffer>;
   timeoutMs?: number;

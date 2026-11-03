@@ -200,9 +200,14 @@ export function AutopilotForm({ active, intervalMinutes, config, sources, platfo
             <Checkbox name="autoImage" defaultChecked={config.autoImage} label="Generate a branded image card for every post" />
             <Checkbox name="utm" defaultChecked={config.utm} label="Add UTM tags to my link (track clicks per platform)" />
           </div>
-          <Field label="Brand colour (image cards)" htmlFor="brandColor" className="max-w-xs">
-            <Input id="brandColor" name="brandColor" type="color" defaultValue={config.brandColor} className="h-9 w-20 p-1" />
-          </Field>
+          <div className="flex flex-wrap gap-4">
+            <Field label="Brand colour (image cards)" htmlFor="brandColor">
+              <Input id="brandColor" name="brandColor" type="color" defaultValue={config.brandColor} className="h-9 w-20 p-1" />
+            </Field>
+            <Field label="Seconds per image (Shorts / TikTok video)" htmlFor="videoSecondsPerSlide">
+              <Input id="videoSecondsPerSlide" name="videoSecondsPerSlide" type="number" min={1.5} max={10} step={0.5} defaultValue={config.videoSecondsPerSlide ?? 3} className="w-28" />
+            </Field>
+          </div>
         </fieldset>
         {mode === "auto" ? <p className="rounded-md bg-warning-soft px-3 py-2 text-xs text-warning">Fully automatic posts go out without review. Start with approval mode until you like the AI&apos;s output, and keep the daily limit low.</p> : null}
       </fieldset>
@@ -304,6 +309,12 @@ export function EditPostDialog({ post, platforms }: { post: EditablePost; platfo
             <Textarea id={f("ig")} name="instagram" rows={5} defaultValue={post.platformTexts.instagram ?? ""} />
           </Field>
         </div>
+        <Field label="Blog article (WordPress, Blogger, DEV, Hashnode)" htmlFor={f("article")} hint="Markdown with ## subheadings. Blank = use the main text.">
+          <Textarea id={f("article")} name="article" rows={8} defaultValue={post.platformTexts.article ?? ""} />
+        </Field>
+        <Field label="Meta description (SEO)" htmlFor={f("meta")} hint="140–160 characters, used as the blog excerpt.">
+          <Input id={f("meta")} name="metaDescription" maxLength={300} defaultValue={post.platformTexts.metaDescription ?? ""} />
+        </Field>
         <Field label="Short text (Bluesky, Threads, Mastodon)" htmlFor={f("short")} hint="Keep under ~170 characters including {LINK}.">
           <Textarea id={f("short")} name="shortBody" rows={2} defaultValue={post.shortBody} maxLength={600} />
         </Field>

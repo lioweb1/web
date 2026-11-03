@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 
 /** Public, signed image URL so Facebook/Instagram/Threads/Telegram/Discord can fetch uploads. */
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const id = (await params).id.replace(/\.jpe?g$/i, "");
+  const id = (await params).id.replace(/\.(jpe?g|mp4)$/i, "");
   const sig = new URL(req.url).searchParams.get("sig") ?? "";
   if (!/^[0-9a-f-]{36}$/i.test(id) || !verifyMediaSignature(id, sig)) return new Response("Not found", { status: 404 });
   const [row] = await systemDb().select({ data: schema.socialMedia.data, mime: schema.socialMedia.mime }).from(schema.socialMedia).where(eq(schema.socialMedia.id, id));

@@ -6,9 +6,11 @@ import { defaultResolver, type Resolver } from "@/lib/analysis/net";
 import { enqueue } from "@/lib/jobs/queue";
 import { notify } from "@/lib/notifications/notify";
 import { ProviderHttpError } from "@/lib/providers/http";
-import { AI_PROVIDERS, SOCIAL_PLATFORMS, getConnection, getConnectionDef, recordConnectionStatus, type SocialConnectionDef } from "./accounts";
+import { AI_PROVIDERS, SOCIAL_PLATFORMS, getConnection, getConnectionDef, recordConnectionStatus, updateConnectionSecrets, type SocialConnectionDef } from "./accounts";
+import { ensureVideo } from "./video";
 import { generatePost, testAi, type TrendInput } from "./ai";
-import { PUBLISHERS, engagementOf, testPlatform, type PostContent } from "./publish";
+import { engagementOf, type PostContent } from "./publish";
+import { BLOG_PLATFORMS, PUBLISHERS, VIDEO_PLATFORMS, testPlatform } from "./channels";
 import { fetchTrends, TREND_SOURCES } from "./trends";
 import { cardImageUrl } from "./image";
 import { isValidTimeZone, nextSlot, parseTimes } from "./schedule";
@@ -135,7 +137,7 @@ export async function winningHooks(workspaceId: string, limit = 3) {
 async function writePost(workspaceId: string, cfg: SocialAutopilotConfig, trend: TrendInput) {
   const { def, conn } = await requireAi(workspaceId, cfg.aiProvider);
   try {
-    const gen = await generatePost(httpClient(), def.id, conn, cfg, trend, { winningHooks: await winningHooks(workspaceId) });
+    const gen = await generatePost(httpClient(), def.id, conn, cfg, trend, { winningHooks: await winningHooks(workspaceId), article: cfg.platforms.some((x) => BLOG_PLATFORMS.includes(x)) });
     await recordConnectionStatus(workspaceId, def, { ok: true, message: "ok" });
     return {
       hook: gen.hooks[0],
@@ -184,7 +186,10 @@ export async function regeneratePost(workspaceId: string, postId: string) {
   const { config } = await getAutopilot(workspaceId);
   const name = p.sourceId === "manual" ? "the user" : (TREND_SOURCES.find((s) => s.id === p.sourceId)?.name ?? p.sourceId);
   const written = await writePost(workspaceId, config, { title: p.sourceTitle ?? p.hook, url: p.sourceUrl, sourceName: name });
-  const [row] = await withTenant(workspaceId, (tx) => tx.update(schema.socialPosts).set({ ...written, status: "draft", updatedAt: new Date() }).where(eq(schema.socialPosts.id, postId)).returning());
+  const [row] = await withTenant(workspaceId, async (tx) => {
+    if (p.videoId) await tx.delete(schema.socialMedia).where(eq(schema.socialMedia.id, p.videoId));
+    return tx.update(schema.socialPosts).set({ ...written, videoId: null, status: "draft", updatedAt: new Date() }).where(eq(schema.socialPosts.id, postId)).returning();
+  });
   return row;
 }
 
@@ -284,12 +289,21 @@ export async function updatePost(workspaceId: string, postId: string, patch: Par
   if (LOCKED.includes(p.status)) throw new SocialConfigError("This post is already published or being published");
   if (patch.platforms?.some((x) => !SOCIAL_PLATFORMS.some((s) => s.id === x))) throw new SocialConfigError("Unknown platform");
   const next = { ...patch };
+  // Platform texts are edited in parts; keep the blog article unless it is replaced explicitly.
+  if (patch.platformTexts) {
+    const keep = Object.fromEntries(Object.entries(p.platformTexts).filter(([k]) => (k === "article" || k === "metaDescription") && !(k in patch.platformTexts!)));
+    next.platformTexts = Object.fromEntries(Object.entries({ ...keep, ...patch.platformTexts }).filter(([, v]) => v));
+  }
   // Keep the chosen hook in the variant list so A/B rotation and analytics stay consistent.
   if (next.hook) {
     const variants = next.hookVariants ?? p.hookVariants;
     next.hookVariants = variants.includes(next.hook) ? variants : [next.hook, ...variants.slice(0, 4)];
   }
-  await withTenant(workspaceId, (tx) => tx.update(schema.socialPosts).set({ ...next, updatedAt: new Date() }).where(eq(schema.socialPosts.id, postId)));
+  await withTenant(workspaceId, async (tx) => {
+    // Any edit can change the video (hook, images), so render it again next time.
+    if (p.videoId) await tx.delete(schema.socialMedia).where(eq(schema.socialMedia.id, p.videoId));
+    await tx.update(schema.socialPosts).set({ ...next, videoId: null, updatedAt: new Date() }).where(eq(schema.socialPosts.id, postId));
+  });
 }
 
 async function cancelQueuedJobs(postId: string) {
@@ -365,6 +379,8 @@ export function postContent(p: Post, cfg: SocialAutopilotConfig, hook = p.hook, 
     // Composer posts keep all of their text: long content continues as a thread on short platforms.
     threadMode: cfg.threadMode || p.sourceId === "composer",
     media,
+    article: p.platformTexts.article ?? null,
+    metaDescription: p.platformTexts.metaDescription ?? null,
   };
 }
 
@@ -389,6 +405,16 @@ export async function publishPost(workspaceId: string, postId: string, opts: { f
   const results: Record<string, SocialPublishResult> = { ...p.results };
   const media = await mediaRefs(workspaceId, p);
   let retryable = false;
+  // One slideshow video serves YouTube Shorts and TikTok; it is rendered only if needed.
+  let video: { id: string; size: number } | null = null;
+  let videoError: string | null = null;
+  if (p.platforms.some((x) => VIDEO_PLATFORMS.includes(x) && !results[x]?.ok)) {
+    try {
+      video = await ensureVideo(workspaceId, p, config, p.link ?? config.link);
+    } catch (e) {
+      videoError = e instanceof Error ? e.message : String(e);
+    }
+  }
   for (const [i, platform] of p.platforms.entries()) {
     if (results[platform]?.ok) continue;
     const def = getConnectionDef("platform", platform);
@@ -403,8 +429,13 @@ export async function publishPost(workspaceId: string, postId: string, opts: { f
       results[platform] = { ok: false, error: `${def.name} is not connected or is disabled`, at };
       continue;
     }
+    if (VIDEO_PLATFORMS.includes(platform) && !video) {
+      results[platform] = { ok: false, error: videoError ?? "Video could not be created", at };
+      continue;
+    }
     try {
-      const out = await PUBLISHERS[platform](deps(workspaceId), conn, postContent(p, config, variants[hookIndex], media));
+      const platformDeps = { ...deps(workspaceId), saveSecrets: (patch: Record<string, string>) => updateConnectionSecrets(workspaceId, def, patch) };
+      const out = await PUBLISHERS[platform](platformDeps, conn, { ...postContent(p, config, variants[hookIndex], media), video });
       results[platform] = { ok: true, id: out.id, cid: out.cid ?? null, url: out.url, at, hookIndex };
       await recordConnectionStatus(workspaceId, def, { ok: true, message: "ok" });
     } catch (e) {
@@ -554,6 +585,7 @@ export async function createComposerPost(workspaceId: string, input: ComposerInp
         sourceTitle: input.title.slice(0, 500),
         ...f,
         hookVariants: [f.hook],
+        platformTexts: input.description.trim() ? { metaDescription: input.description.trim().slice(0, 300) } : {},
         hashtags: input.hashtags.map((h) => h.replace(/^#/, "").replace(/\s+/g, "")).filter(Boolean).slice(0, 10),
         link: input.link,
         altText: input.alts[0]?.trim() || null,
@@ -593,4 +625,11 @@ export async function publishNow(workspaceId: string, postId: string) {
     }
   }
   return { post: await getPost(workspaceId, postId), retrying };
+}
+
+/** Render (or reuse) the slideshow video so it can be previewed before publishing. */
+export async function prepareVideo(workspaceId: string, postId: string) {
+  const p = await getPost(workspaceId, postId);
+  const { config } = await getAutopilot(workspaceId);
+  return ensureVideo(workspaceId, p, config, p.link ?? config.link);
 }

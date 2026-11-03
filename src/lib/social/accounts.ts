@@ -19,6 +19,15 @@ export type SocialConnectionDef = {
   settingFields: FieldDef[];
 };
 
+/** Google OAuth client + refresh token (Business Profile, Blogger, YouTube). */
+function GOOGLE_OAUTH_FIELDS(scope: string): FieldDef[] {
+  return [
+    { key: "clientId", label: "OAuth client ID", type: "secret", required: true },
+    { key: "clientSecret", label: "OAuth client secret", type: "secret", required: true },
+    { key: "refreshToken", label: "Refresh token", type: "secret", required: true, help: `Get one with the OAuth Playground (your own client, offline access) for scope: ${scope}` },
+  ];
+}
+
 export const AI_PROVIDERS: SocialConnectionDef[] = [
   {
     id: "gemini",
@@ -149,6 +158,97 @@ export const SOCIAL_PLATFORMS: SocialConnectionDef[] = [
     secretFields: [{ key: "accessToken", label: "Access token", type: "secret", required: true }],
     settingFields: [],
   },
+  {
+    id: "pinterest",
+    kind: "platform",
+    name: "Pinterest",
+    description: "Creates a Pin (or a carousel Pin for 2–5 images) with your title, description and link on the board you choose. Pins rank in Google and Pinterest search, so they send long-term traffic.",
+    pricingNote: "Free (Pinterest API v5; needs an approved app, trial access works for your own account).",
+    docsUrl: "https://developers.pinterest.com/docs/api/v5/pins-create/",
+    secretFields: [{ key: "accessToken", label: "Access token", type: "secret", required: true, help: "Scopes: boards:read, pins:write, user_accounts:read" }],
+    settingFields: [{ key: "boardId", label: "Board ID", type: "text", required: true }],
+  },
+  {
+    id: "google_business",
+    kind: "platform",
+    name: "Google Business Profile",
+    description: "Publishes an Update post with photo and a “Learn more” button on your Business Profile (Google Search and Maps). Great for local SEO. Needs Business Profile API access approved by Google.",
+    pricingNote: "Free (Google Business Profile API, access on request).",
+    docsUrl: "https://developers.google.com/my-business/content/posts-data",
+    secretFields: GOOGLE_OAUTH_FIELDS("https://www.googleapis.com/auth/business.manage"),
+    settingFields: [
+      { key: "accountId", label: "Account ID", type: "text", required: true, help: "Numbers only, from accounts/<id>" },
+      { key: "locationId", label: "Location ID", type: "text", required: true, help: "Numbers only, from locations/<id>" },
+    ],
+  },
+  {
+    id: "wordpress",
+    kind: "platform",
+    name: "WordPress blog",
+    description: "Publishes a full SEO article on your self-hosted WordPress site: title, excerpt, featured image, images in the body, tags from your hashtags. Create an application password under Users → Profile.",
+    pricingNote: "Free (WordPress REST API).",
+    docsUrl: "https://developer.wordpress.org/rest-api/reference/posts/",
+    secretFields: [{ key: "appPassword", label: "Application password", type: "secret", required: true }],
+    settingFields: [
+      { key: "siteUrl", label: "Site URL", type: "text", required: true, help: "e.g. https://blog.example.com" },
+      { key: "username", label: "Username", type: "text", required: true },
+      { key: "status", label: "Post status", type: "text", help: "publish (default) or draft" },
+    ],
+  },
+  {
+    id: "blogger",
+    kind: "platform",
+    name: "Blogger",
+    description: "Publishes the article on your Blogger blog with labels from your hashtags.",
+    pricingNote: "Free (Blogger API v3).",
+    docsUrl: "https://developers.google.com/blogger/docs/3.0/using",
+    secretFields: GOOGLE_OAUTH_FIELDS("https://www.googleapis.com/auth/blogger"),
+    settingFields: [{ key: "blogId", label: "Blog ID", type: "text", required: true, help: "Blogger dashboard URL contains blogID=…" }],
+  },
+  {
+    id: "devto",
+    kind: "platform",
+    name: "DEV (dev.to)",
+    description: "Cross-posts the article to DEV with cover image and up to 4 tags. When the post has a link, it is set as the canonical URL so Google credits your site, and you still get the backlink.",
+    pricingNote: "Free (Forem API key from Settings → Extensions).",
+    docsUrl: "https://developers.forem.com/api/v1#tag/articles/operation/createArticle",
+    secretFields: [{ key: "apiKey", label: "API key", type: "secret", required: true }],
+    settingFields: [],
+  },
+  {
+    id: "hashnode",
+    kind: "platform",
+    name: "Hashnode",
+    description: "Cross-posts the article to your Hashnode publication with cover image, tags and the original URL as canonical.",
+    pricingNote: "Free (Hashnode GraphQL API token from Settings → Developer).",
+    docsUrl: "https://apidocs.hashnode.com/",
+    secretFields: [{ key: "token", label: "Personal access token", type: "secret", required: true }],
+    settingFields: [{ key: "publicationId", label: "Publication ID", type: "text", required: true }],
+  },
+  {
+    id: "youtube",
+    kind: "platform",
+    name: "YouTube Shorts",
+    description: "Turns the post's images into a vertical slideshow video (1080×1920) and uploads it as a Short. Videos from an unverified Google app stay private until Google verifies the app.",
+    pricingNote: "Free (YouTube Data API; the default quota allows about 6 uploads a day).",
+    docsUrl: "https://developers.google.com/youtube/v3/guides/uploading_a_video",
+    secretFields: GOOGLE_OAUTH_FIELDS("https://www.googleapis.com/auth/youtube.upload https://www.googleapis.com/auth/youtube.readonly"),
+    settingFields: [{ key: "privacy", label: "Privacy", type: "text", help: "public (default), unlisted or private" }],
+  },
+  {
+    id: "tiktok",
+    kind: "platform",
+    name: "TikTok",
+    description: "Uploads the slideshow video with your caption. Until TikTok audits your app, posts can only be private (SELF_ONLY); after approval they can be public.",
+    pricingNote: "Free (TikTok Content Posting API, video.publish scope).",
+    docsUrl: "https://developers.tiktok.com/doc/content-posting-api-reference-direct-post",
+    secretFields: [
+      { key: "clientKey", label: "Client key", type: "secret", required: true },
+      { key: "clientSecret", label: "Client secret", type: "secret", required: true },
+      { key: "refreshToken", label: "Refresh token", type: "secret", required: true, help: "From the OAuth login of your TikTok account (scopes: user.info.basic, video.publish)." },
+    ],
+    settingFields: [{ key: "privacy", label: "Privacy level", type: "text", help: "PUBLIC_TO_EVERYONE, MUTUAL_FOLLOW_FRIENDS, FOLLOWER_OF_CREATOR or SELF_ONLY (default until audited)" }],
+  },
 ];
 
 export const ALL_CONNECTIONS = [...AI_PROVIDERS, ...SOCIAL_PLATFORMS];
@@ -243,5 +343,15 @@ export async function recordConnectionStatus(workspaceId: string, def: SocialCon
         ...(outcome.ok ? { lastSuccessAt: now } : { lastErrorAt: now, lastError: outcome.message.slice(0, 1000) }),
       })
       .where(eq(schema.integrations.id, existing.id));
+  });
+}
+
+/** Persist rotated tokens (e.g. TikTok refresh tokens) without touching other fields. */
+export async function updateConnectionSecrets(workspaceId: string, def: SocialConnectionDef, patch: Record<string, string>) {
+  await withTenant(workspaceId, async (tx) => {
+    const existing = await getIntegrationRow(tx, workspaceId, connectionKey(def));
+    if (!existing) return;
+    const { secrets } = decode(existing);
+    await tx.update(schema.integrations).set({ encryptedSecrets: encryptSecret(JSON.stringify({ ...secrets, ...patch })), updatedAt: new Date() }).where(eq(schema.integrations.id, existing.id));
   });
 }

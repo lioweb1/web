@@ -776,6 +776,8 @@ export type SocialAutopilotConfig = {
   brandColor: string;
   /** Add utm_source/medium/campaign to the link. */
   utm: boolean;
+  /** Seconds each image is shown in the slideshow video. */
+  videoSecondsPerSlide?: number;
 };
 
 export const socialAutopilots = pgTable("social_autopilots", {
@@ -844,6 +846,8 @@ export const socialPosts = pgTable(
     link: text("link"),
     /** Uploaded images (social_media ids), in order. */
     mediaIds: uuid("media_ids").array().notNull().default(sql`'{}'::uuid[]`),
+    /** Generated slideshow video (social_media id) for YouTube Shorts / TikTok; cleared on edits. */
+    videoId: uuid("video_id"),
     engagementComment: text("engagement_comment"),
     hashtags: text("hashtags").array().notNull().default(sql`'{}'::text[]`),
     imageUrl: text("image_url"),

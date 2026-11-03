@@ -38,7 +38,7 @@ export default async function ComposePage() {
         <Card>
           <EmptyState
             title="Connect an account first"
-            description="Add at least one publishing account (Facebook Page, Instagram, Threads, Bluesky, Mastodon, Telegram, Discord or LinkedIn)."
+            description="Add at least one publishing account in Settings (Facebook, Instagram, Threads, Pinterest, YouTube, TikTok, blogs and more)."
             action={
               <Link href="/app/social/settings" className="font-medium text-accent hover:underline">
                 Open settings
@@ -59,7 +59,7 @@ export default async function ComposePage() {
             </CardBody>
           </Card>
           <p className="mt-3 text-xs text-muted">
-            Instagram and Threads show up to 10 images as a carousel, Facebook as an album, Bluesky and Mastodon up to 4. LinkedIn gets the text and link. Comments on these posts appear under Comments, and their likes/shares under Analytics.
+            Instagram and Threads show up to 10 images as a carousel, Facebook as an album, Pinterest up to 5, Bluesky and Mastodon up to 4. Blogs (WordPress, Blogger, DEV, Hashnode) get a full article; YouTube Shorts and TikTok get a vertical slideshow video made from your images. LinkedIn gets the text and link. Comments on these posts appear under Comments, and their likes/shares under Analytics.
           </p>
         </>
       )}

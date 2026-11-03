@@ -74,8 +74,8 @@ export function verifyMediaSignature(id: string, sig: string) {
 }
 
 /** Signed URL platforms fetch the image from (absolute) or the app previews it with (relative). */
-export function mediaUrl(id: string, opts: { absolute?: boolean } = {}) {
-  const path = `/api/social/media/${id}.jpg?sig=${mediaSignature(id)}`;
+export function mediaUrl(id: string, opts: { absolute?: boolean; ext?: "jpg" | "mp4" } = {}) {
+  const path = `/api/social/media/${id}.${opts.ext ?? "jpg"}?sig=${mediaSignature(id)}`;
   return opts.absolute ? `${(process.env.APP_URL ?? "http://localhost:3000").replace(/\/$/, "")}${path}` : path;
 }
 
