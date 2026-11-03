@@ -1,0 +1,38 @@
+# Signal Script — Apache / LiteSpeed (Hostinger)
+Options -Indexes
+DirectoryIndex index.php
+
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  # If the script lives in a sub-folder, set it here, e.g. RewriteBase /signals/
+  # RewriteBase /
+
+  # Block internal folders and files
+  RewriteRule ^(inc|views|storage)(/|$) - [F,L]
+  RewriteRule ^admin/(entities\.php|views/) - [F,L]
+  RewriteRule (^|/)\.(git|env) - [F,L]
+
+  # Front controller
+  RewriteCond %{REQUEST_FILENAME} !-f
+  RewriteCond %{REQUEST_FILENAME} !-d
+  RewriteRule ^ index.php [QSA,L]
+</IfModule>
+
+<FilesMatch "^(config\.php|config\.sample\.php|schema\.sql|.*\.md)$">
+  Require all denied
+</FilesMatch>
+
+<IfModule mod_headers.c>
+  Header always set X-Content-Type-Options "nosniff"
+  Header always set X-Frame-Options "SAMEORIGIN"
+  Header always set Referrer-Policy "strict-origin-when-cross-origin"
+</IfModule>
+
+<IfModule mod_expires.c>
+  ExpiresActive On
+  ExpiresByType text/css "access plus 30 days"
+  ExpiresByType application/javascript "access plus 30 days"
+  ExpiresByType image/png "access plus 30 days"
+  ExpiresByType image/jpeg "access plus 30 days"
+  ExpiresByType image/webp "access plus 30 days"
+</IfModule>

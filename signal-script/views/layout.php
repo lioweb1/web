@@ -1,0 +1,140 @@
+<?php
+/** @var string $content */
+$siteName = setting('site_name');
+$pageTitle = isset($title) && $title !== '' ? $title : $siteName;
+if (!str_contains($pageTitle, $siteName)) {
+    $pageTitle .= ' | ' . $siteName;
+}
+$desc = $metaDescription ?? setting('tagline');
+$me = current_user();
+$premium = user_is_premium($me);
+$nav = [
+    '' => 'Home',
+    'signals' => 'Live Signals',
+    'results' => 'Results',
+    'blog' => 'Analysis',
+    'brokers' => 'Brokers',
+    'pricing' => 'Premium',
+];
+$reqPath = trim(substr(parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/', strlen(rtrim(parse_url(BASE_URL, PHP_URL_PATH) ?: '', '/'))), '/');
+$current = explode('/', $reqPath)[0];
+?><!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title><?= e($pageTitle) ?></title>
+<meta name="description" content="<?= e($desc) ?>">
+<meta property="og:title" content="<?= e($pageTitle) ?>">
+<meta property="og:description" content="<?= e($desc) ?>">
+<meta property="og:type" content="website">
+<?php if (!empty($ogImage)): ?><meta property="og:image" content="<?= e($ogImage) ?>"><?php endif; ?>
+<?php if (setting('favicon_url')): ?><link rel="icon" href="<?= e(setting('favicon_url')) ?>"><?php endif; ?>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="<?= asset('css/style.css') ?>">
+<style>:root{--primary:<?= e(setting('primary_color', '#22c55e')) ?>;--accent:<?= e(setting('accent_color', '#3b82f6')) ?>}<?= setting('custom_css') ?></style>
+<?= setting('head_code') ?>
+</head>
+<body>
+<?= setting('body_start_code') ?>
+<header class="site-header">
+  <div class="container nav-wrap">
+    <a class="brand" href="<?= e(url()) ?>">
+      <?php if (setting('logo_url')): ?><img src="<?= e(setting('logo_url')) ?>" alt="<?= e($siteName) ?>"><?php else: ?><span class="brand-mark">▲</span><?= e($siteName) ?><?php endif; ?>
+    </a>
+    <button class="nav-toggle" aria-label="Menu" onclick="document.body.classList.toggle('nav-open')">☰</button>
+    <nav class="main-nav">
+      <?php foreach ($nav as $href => $label): ?>
+        <a href="<?= e(url($href)) ?>" class="<?= $current === $href ? 'active' : '' ?>"><?= e($label) ?></a>
+      <?php endforeach; ?>
+      <?php foreach (menu_pages() as $mp): ?>
+        <a href="<?= e(url('p/' . $mp['slug'])) ?>"><?= e($mp['title']) ?></a>
+      <?php endforeach; ?>
+      <span class="nav-sep"></span>
+      <?php if ($me): ?>
+        <?php if ($me['role'] === 'admin'): ?><a href="<?= e(url('admin/')) ?>">Admin</a><?php endif; ?>
+        <a href="<?= e(url('dashboard')) ?>" class="btn btn-sm <?= $premium ? 'btn-gold' : 'btn-outline' ?>"><?= $premium ? '⭐ ' : '' ?><?= e(explode(' ', $me['name'])[0]) ?></a>
+      <?php else: ?>
+        <a href="<?= e(url('login')) ?>">Log in</a>
+        <a href="<?= e(url('register')) ?>" class="btn btn-sm btn-primary">Join free</a>
+      <?php endif; ?>
+    </nav>
+  </div>
+</header>
+
+<?php if (setting('show_ticker') === '1' && lines(setting('ticker_symbols'))):
+    $sym = [];
+    foreach (lines(setting('ticker_symbols')) as $l) {
+        [$pro, $t] = array_pad(explode('|', $l, 2), 2, '');
+        $sym[] = ['proName' => trim($pro), 'title' => trim($t) ?: trim($pro)];
+    } ?>
+<div class="ticker">
+  <div class="tradingview-widget-container"><div class="tradingview-widget-container__widget"></div>
+  <script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-ticker-tape.js" async><?= json_encode(['symbols' => $sym, 'showSymbolLogo' => true, 'colorTheme' => 'dark', 'isTransparent' => true, 'displayMode' => 'adaptive', 'locale' => 'en'], JSON_UNESCAPED_SLASHES) ?></script>
+  </div>
+</div>
+<?php endif; ?>
+
+<?php if (setting('ad_top')): ?><div class="container ad-slot"><?= setting('ad_top') ?></div><?php endif; ?>
+
+<main>
+  <?php $fl = flashes(); if ($fl): ?>
+  <div class="container flashes">
+    <?php foreach ($fl as $f): ?><div class="alert alert-<?= e($f['type']) ?>"><?= e($f['msg']) ?></div><?php endforeach; ?>
+  </div>
+  <?php endif; ?>
+  <?= $content ?>
+</main>
+
+<footer class="site-footer">
+  <div class="container footer-grid">
+    <div>
+      <a class="brand" href="<?= e(url()) ?>"><span class="brand-mark">▲</span><?= e($siteName) ?></a>
+      <p class="muted"><?= e(setting('tagline')) ?></p>
+      <div class="socials">
+        <?php foreach (['social_telegram' => 'Telegram', 'social_facebook' => 'Facebook', 'social_youtube' => 'YouTube', 'social_whatsapp' => 'WhatsApp'] as $k => $l): if (setting($k)): ?>
+          <a href="<?= e(setting($k)) ?>" target="_blank" rel="noopener"><?= $l ?></a>
+        <?php endif; endforeach; ?>
+      </div>
+    </div>
+    <div>
+      <h4>Explore</h4>
+      <?php foreach ($nav as $href => $label): ?><a href="<?= e(url($href)) ?>"><?= e($label) ?></a><?php endforeach; ?>
+    </div>
+    <div>
+      <h4>Information</h4>
+      <?php foreach (menu_pages('in_footer') as $mp): ?><a href="<?= e(url('p/' . $mp['slug'])) ?>"><?= e($mp['title']) ?></a><?php endforeach; ?>
+    </div>
+    <?php if (setting('optin_enabled') === '1'): ?>
+    <div>
+      <h4><?= e(setting('optin_title')) ?></h4>
+      <?php $optinSource = 'footer'; include APP_ROOT . '/views/partials/optin.php'; ?>
+    </div>
+    <?php endif; ?>
+  </div>
+  <div class="container disclaimer">
+    <p><?= e(setting('disclaimer')) ?></p>
+    <?php if (setting('footer_text')): ?><p><?= setting('footer_text') ?></p><?php endif; ?>
+    <p class="muted">© <?= date('Y') ?> <?= e($siteName) ?>. All rights reserved.</p>
+  </div>
+</footer>
+
+<?php if (setting('optin_enabled') === '1' && setting('optin_popup') === '1' && !$me): ?>
+<div class="modal" id="optin-modal" data-delay="<?= (int)setting('optin_popup_delay', '15') ?>" hidden>
+  <div class="modal-card">
+    <button class="modal-close" aria-label="Close" data-close>×</button>
+    <div class="modal-icon">📈</div>
+    <h3><?= e(setting('optin_title')) ?></h3>
+    <p class="muted"><?= e(setting('optin_text')) ?></p>
+    <?php $optinSource = 'popup'; include APP_ROOT . '/views/partials/optin.php'; ?>
+  </div>
+</div>
+<?php endif; ?>
+
+<script>window.APP = {base: <?= json_encode(BASE_URL) ?>, csrf: <?= json_encode(csrf_token()) ?>};</script>
+<script src="<?= asset('js/app.js') ?>"></script>
+<?php if (setting('custom_js')): ?><script><?= setting('custom_js') ?></script><?php endif; ?>
+<?= setting('footer_code') ?>
+</body>
+</html>
