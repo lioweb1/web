@@ -10,6 +10,7 @@ export default defineConfig({
   },
   test: {
     environment: "node",
+    exclude: ["**/node_modules/**", "medchrono/**"],
     globalSetup: ["tests/helpers/global-setup.ts"],
     setupFiles: ["tests/helpers/env.ts"],
     fileParallelism: false,
