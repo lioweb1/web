@@ -6,17 +6,17 @@ import { EmptyState } from "@/components/ui/states";
 
 type Row = { key: string; label: string; value: number };
 
-const tooltipStyle = {
+export const tooltipStyle = {
   contentStyle: { background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 12, color: "var(--text)", boxShadow: "0 4px 12px rgb(0 0 0 / 0.12)" },
   labelStyle: { color: "var(--text-muted)", marginBottom: 2 },
   itemStyle: { color: "var(--text)", padding: 0 },
   cursor: { fill: "var(--surface-2)", opacity: 0.6 },
 };
 
-const axisTick = { fill: "var(--ink-muted)", fontSize: 11 };
+export const axisTick = { fill: "var(--ink-muted)", fontSize: 11 };
 
 /** Toggle between the chart and an accessible data table. */
-function ChartFrame({ empty, emptyText, table, children, height }: { empty: boolean; emptyText: string; table: React.ReactNode; children: React.ReactNode; height: number }) {
+export function ChartFrame({ empty, emptyText, table, children, height }: { empty: boolean; emptyText: string; table: React.ReactNode; children: React.ReactNode; height: number }) {
   const [showTable, setShowTable] = useState(false);
   const id = useId();
   if (empty) return <EmptyState className="py-8" title="No data yet" description={emptyText} />;
@@ -32,7 +32,7 @@ function ChartFrame({ empty, emptyText, table, children, height }: { empty: bool
   );
 }
 
-function SimpleTable({ rows, valueLabel = "Leads", format }: { rows: { label: string; values: (number | string)[] }[]; valueLabel?: string | string[]; format?: (n: number) => string }) {
+export function SimpleTable({ rows, valueLabel = "Leads", format }: { rows: { label: string; values: (number | string)[] }[]; valueLabel?: string | string[]; format?: (n: number) => string }) {
   const heads = Array.isArray(valueLabel) ? valueLabel : [valueLabel];
   return (
     <div className="max-h-80 overflow-auto">

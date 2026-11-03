@@ -729,3 +729,111 @@ export const usageRecords = pgTable(
   },
   (t) => [primaryKey({ columns: [t.workspaceId, t.metric, t.period] })],
 );
+
+/* ------------------------------------------------------------------ */
+/* Trading bot: licenses, devices, trade journal, live status           */
+/* ------------------------------------------------------------------ */
+
+export type BotLicenseFeatures = {
+  /** May place orders (false = signals only). */
+  auto_trade?: boolean;
+  /** Maximum symbols scanned at once. */
+  max_symbols?: number;
+  /** Broker adapters the license unlocks, e.g. ["deriv", "browser", "extension"]. */
+  brokers?: string[];
+  /** Telegram signal copier. */
+  copier?: boolean;
+  /** Chrome extension overlay. */
+  extension?: boolean;
+};
+
+export type BotStatusSummary = {
+  wins?: number;
+  losses?: number;
+  win_rate?: number;
+  pnl?: number;
+  trades?: number;
+  halted?: string | null;
+  day?: string;
+};
+
+export const botLicenses = pgTable(
+  "bot_licenses",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    /** BB-XXXX-XXXX-XXXX-XXXX; shown to admins so customers can be given it. */
+    key: text("key").notNull(),
+    label: text("label").notNull(),
+    /** "trial" | "monthly" | "yearly" | "lifetime" */
+    plan: text("plan").notNull().default("trial"),
+    /** "active" | "revoked" | "expired" */
+    status: text("status").notNull().default("active"),
+    maxDevices: integer("max_devices").notNull().default(1),
+    expiresAt: timestamp("expires_at", { withTimezone: true }),
+    features: jsonb("features").$type<BotLicenseFeatures>().notNull().default({}),
+    notes: text("notes"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    lastSeenAt: timestamp("last_seen_at", { withTimezone: true }),
+  },
+  (t) => [uniqueIndex("bot_licenses_key_uq").on(t.key), index("bot_licenses_ws_idx").on(t.workspaceId, t.createdAt)],
+);
+
+export const botDevices = pgTable(
+  "bot_devices",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    licenseId: uuid("license_id")
+      .notNull()
+      .references(() => botLicenses.id, { onDelete: "cascade" }),
+    machineId: text("machine_id").notNull(),
+    hostname: text("hostname"),
+    version: text("version"),
+    broker: text("broker"),
+    lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("bot_devices_license_machine_uq").on(t.licenseId, t.machineId)],
+);
+
+export const botTrades = pgTable(
+  "bot_trades",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    licenseId: uuid("license_id")
+      .notNull()
+      .references(() => botLicenses.id, { onDelete: "cascade" }),
+    deviceId: uuid("device_id").references(() => botDevices.id, { onDelete: "set null" }),
+    tradedAt: timestamp("traded_at", { withTimezone: true }).notNull(),
+    symbol: text("symbol").notNull(),
+    /** "CALL" | "PUT" */
+    direction: text("direction").notNull(),
+    stake: doublePrecision("stake").notNull(),
+    confidence: doublePrecision("confidence"),
+    /** "win" | "loss" | "tie" | "unknown" */
+    outcome: text("outcome").notNull(),
+    pnl: doublePrecision("pnl").notNull().default(0),
+    /** Broker contract reference; used to dedupe re-sent trades. */
+    ref: text("ref"),
+    strategy: text("strategy"),
+    broker: text("broker"),
+    reasons: jsonb("reasons").$type<string[]>().notNull().default([]),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("bot_trades_license_time_idx").on(t.licenseId, t.tradedAt),
+    uniqueIndex("bot_trades_ref_uq").on(t.licenseId, t.ref).where(sql`${t.ref} is not null`),
+  ],
+);
+
+export const botStatus = pgTable("bot_status", {
+  deviceId: uuid("device_id")
+    .primaryKey()
+    .references(() => botDevices.id, { onDelete: "cascade" }),
+  balance: doublePrecision("balance"),
+  summary: jsonb("summary").$type<BotStatusSummary>().notNull().default({}),
+  config: jsonb("config").$type<Record<string, unknown>>().notNull().default({}),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});

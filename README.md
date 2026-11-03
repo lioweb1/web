@@ -168,6 +168,10 @@ The tests run against a real PostgreSQL. Provider responses are replayed from re
 - job retries, backoff and dead-lettering;
 - CRM, import/export and settings.
 
+## Trading bot control plane
+
+The *Trading bot* section (`/app/bot`) issues license keys for the Python bot in `bot/`, and shows the trades and status every licensed bot reports. API contract and data model: [docs/bot-dashboard.md](docs/bot-dashboard.md).
+
 ## Honest limitations
 
 - Public Overpass and Nominatim servers have fair-use limits. For heavy monitoring, self-host them (both are free software) and set the URLs in *Data sources*.
