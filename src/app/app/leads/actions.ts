@@ -13,6 +13,8 @@ import { providerContext } from "@/lib/services/integrations";
 import { suppressBusiness } from "@/lib/services/accounts";
 import { fireLeadEvent } from "@/lib/jobs/handlers";
 import { importLeads, IMPORT_FIELDS, type ColumnMapping } from "@/lib/services/import";
+import { rateLimit } from "@/lib/security/rate-limit";
+import { DRAFT_KINDS, TONES, OutreachError, generateDraft, saveManualDraft, updateDraft, markDraftUsed, sendOutreachEmail, deleteDraft, type DraftKind } from "@/lib/services/outreach";
 
 const statusEnum = z.enum(LEAD_STATUSES.map(([k]) => k) as [string, ...string[]]);
 const ids = zArr.pipe(z.array(z.string().uuid()).min(1, "Select at least one lead").max(1000));
@@ -246,3 +248,81 @@ export const importCsvAction = action(
     };
   },
 );
+
+/* ------------------------------ outreach ------------------------------ */
+
+const draftKind = z.enum(DRAFT_KINDS.map(([k]) => k) as [DraftKind, ...DraftKind[]]);
+const followUpDays = z.preprocess((v) => (v === "" || v === undefined || v === "0" ? null : v), z.coerce.number().int().min(1).max(90).nullable());
+
+export const generateDraftAction = action(
+  {
+    role: "member",
+    audit: "outreach.draft_generate",
+    schema: z.object({ leadId, kind: draftKind, tone: z.enum(TONES), language: z.string().trim().max(40).optional(), context: z.string().trim().max(2000).optional() }),
+  },
+  async (ctx, i) => {
+    await rateLimit(`ai-draft:${ctx.workspace.id}`, 20, 60);
+    try {
+      await generateDraft(ctx.workspace.id, { id: ctx.user.id, name: ctx.user.name }, i.leadId, { kind: i.kind, tone: i.tone, language: i.language || null, userContext: i.context || null });
+    } catch (e) {
+      if (e instanceof OutreachError) throw new UserError(e.message);
+      throw e;
+    }
+    done(i.leadId);
+    return { ok: true, message: "Draft ready. Read it, edit anything that is not accurate, then copy or send it." };
+  },
+);
+
+export const newManualDraftAction = simpleAction({ role: "member", schema: z.object({ leadId, kind: draftKind }) }, async (ctx, i) => {
+  await saveManualDraft(ctx.workspace.id, ctx.user.id, i.leadId, { kind: i.kind, body: "" });
+  done(i.leadId);
+});
+
+const draftFields = { leadId, draftId: z.string().uuid(), subject: z.string().trim().max(200).optional(), body: z.string().max(6000) };
+
+export const saveDraftAction = action({ role: "member", schema: z.object(draftFields) }, async (ctx, i) => {
+  await updateDraft(ctx.workspace.id, i.draftId, { subject: i.subject || null, body: i.body });
+  done(i.leadId);
+  return { ok: true, message: "Draft saved." };
+});
+
+export const markDraftUsedAction = action(
+  { role: "member", audit: "outreach.manual_sent", schema: z.object({ ...draftFields, followUpDays, note: z.string().trim().max(300).optional() }) },
+  async (ctx, i) => {
+    if (!i.body.trim()) throw new UserError("The draft is empty.");
+    await updateDraft(ctx.workspace.id, i.draftId, { subject: i.subject || null, body: i.body });
+    try {
+      await markDraftUsed(ctx.workspace.id, ctx.user.id, i.draftId, { followUpDays: i.followUpDays, note: i.note || null });
+    } catch (e) {
+      if (e instanceof OutreachError) throw new UserError(e.message);
+      throw e;
+    }
+    done(i.leadId);
+    return { ok: true, message: i.followUpDays ? `Logged. Follow-up reminder set in ${i.followUpDays} day(s).` : "Logged in the timeline." };
+  },
+);
+
+export const sendOutreachEmailAction = action(
+  {
+    role: "member",
+    audit: "outreach.email_send",
+    schema: z.object({ leadId, draftId: z.string().uuid().optional(), to: z.string().trim().email("Choose a published business email"), subject: z.string().trim().min(1, "Add a subject").max(200), body: z.string().trim().min(1, "The email body is empty").max(6000), followUpDays }),
+  },
+  async (ctx, i) => {
+    await rateLimit(`outreach-send:${ctx.workspace.id}`, 30, 60);
+    try {
+      await sendOutreachEmail(ctx.workspace.id, { id: ctx.user.id, name: ctx.user.name }, { leadId: i.leadId, to: i.to, subject: i.subject, body: i.body, draftId: i.draftId ?? null, followUpDays: i.followUpDays });
+    } catch (e) {
+      if (e instanceof OutreachError) throw new UserError(e.message);
+      throw e;
+    }
+    done(i.leadId);
+    revalidatePath("/app/outreach");
+    return { ok: true, message: `Email sent to ${i.to}.${i.followUpDays ? ` Follow-up reminder set in ${i.followUpDays} day(s).` : ""}` };
+  },
+);
+
+export const deleteDraftAction = simpleAction({ role: "member", schema: z.object({ leadId, draftId: z.string().uuid() }) }, async (ctx, i) => {
+  await deleteDraft(ctx.workspace.id, i.draftId);
+  done(i.leadId);
+});

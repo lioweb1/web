@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { and, asc, desc, eq } from "drizzle-orm";
 import { ArrowLeft, ExternalLink, RefreshCw, Calculator, Send, Archive, Trash2, ShieldOff, X, Check } from "lucide-react";
 import { requireAuth, hasRole } from "@/lib/auth/session";
-import { schema, withTenant } from "@/lib/db";
+import { schema, systemDb, withTenant } from "@/lib/db";
 import { countryName, flag } from "@/lib/countries";
 import { scoreCategory } from "@/lib/scoring/score";
 import { sourceName } from "@/lib/providers/registry";
@@ -17,9 +17,12 @@ import { Notice, EmptyState } from "@/components/ui/states";
 import { ConfirmDialog } from "@/components/ui/dialog";
 import { ScoreBadge, ScoreBar, StatusBadge, VerificationBadge, SourceLink, Timeline, fmtDate, fmtRelative } from "@/components/ui/misc";
 import { LeadEditForm, NoteForm, CommunicationForm, TaskForm } from "@/components/crm/lead-forms";
+import { OutreachPanel } from "@/components/crm/outreach-panel";
+import { outreachSmtp, pickAiProvider, sentTodayCount } from "@/lib/services/outreach";
 import {
   updateLeadAction, addNoteAction, editNoteAction, deleteNoteAction, logCommunicationAction, tagLeadAction, listLeadAction, createTaskAction, completeTaskAction,
   reanalyzeAction, rescoreAction, hubspotAction, archiveLeadAction, deleteLeadAction, suppressAction,
+  generateDraftAction, newManualDraftAction, saveDraftAction, markDraftUsedAction, sendOutreachEmailAction, deleteDraftAction,
 } from "../actions";
 
 export const metadata = { title: "Lead" };
@@ -38,7 +41,7 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
     const [row] = await tx.select({ lead: schema.leads, business: schema.businesses }).from(schema.leads).innerJoin(schema.businesses, eq(schema.businesses.id, schema.leads.businessId)).where(and(eq(schema.leads.id, id), eq(schema.leads.workspaceId, ws)));
     if (!row) return null;
     const bid = row.business.id;
-    const [observations, contacts, analyses, signals, notes, activities, tasks, allTags, leadTags, lists, listItems, members, domainRows] = await Promise.all([
+    const [observations, contacts, analyses, signals, notes, activities, tasks, allTags, leadTags, lists, listItems, members, domainRows, drafts, sentEmails] = await Promise.all([
       tx.select().from(schema.sourceObservations).where(eq(schema.sourceObservations.businessId, bid)).orderBy(desc(schema.sourceObservations.observedAt)).limit(500),
       tx.select().from(schema.contacts).where(eq(schema.contacts.businessId, bid)).orderBy(asc(schema.contacts.type)),
       tx.select().from(schema.websiteAnalyses).where(eq(schema.websiteAnalyses.businessId, bid)).orderBy(desc(schema.websiteAnalyses.analyzedAt)).limit(5),
@@ -52,14 +55,16 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
       tx.select().from(schema.leadListItems).where(eq(schema.leadListItems.leadId, id)),
       tx.select({ id: schema.users.id, name: schema.users.name }).from(schema.memberships).innerJoin(schema.users, eq(schema.users.id, schema.memberships.userId)).where(eq(schema.memberships.workspaceId, ws)),
       row.business.domain ? tx.select().from(schema.domains).where(eq(schema.domains.domain, row.business.domain)) : Promise.resolve([]),
+      tx.select().from(schema.outreachDrafts).where(eq(schema.outreachDrafts.leadId, id)).orderBy(desc(schema.outreachDrafts.createdAt)).limit(20),
+      tx.select().from(schema.outreachMessages).where(eq(schema.outreachMessages.leadId, id)).orderBy(desc(schema.outreachMessages.sentAt)).limit(10),
     ]);
-    return { ...row, observations, contacts, analyses, signals, notes, activities, tasks, allTags, leadTags: leadTags.map((t) => t.tag), lists, listItems, members, domain: domainRows[0] ?? null };
+    return { ...row, observations, contacts, analyses, signals, notes, activities, tasks, allTags, leadTags: leadTags.map((t) => t.tag), lists, listItems, members, domain: domainRows[0] ?? null, drafts, sentEmails };
   });
   if (!data) notFound();
   const { lead, business: b } = data;
   const canEdit = hasRole(ctx, "member");
   const isAdmin = hasRole(ctx, "admin");
-  const hub = await providerContext(ws, "hubspot");
+  const [hub, ai, smtp, sentToday, wsRow] = await Promise.all([providerContext(ws, "hubspot"), pickAiProvider(ws), outreachSmtp(ws), sentTodayCount(ws), systemDb().select({ settings: schema.workspaces.settings }).from(schema.workspaces).where(eq(schema.workspaces.id, ws))]);
   const hubReady = hub.enabled && hub.configured;
   const analysis = data.analyses[0] ?? null;
   const suppressed = b.externalKeys.includes("suppressed");
@@ -324,6 +329,27 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
                   ))}
                 </ul>
               )}
+            </CardBody>
+          </Card>
+
+          {/* Outreach */}
+          <Card id="outreach">
+            <CardHeader title="Outreach: LinkedIn & email" description="AI-written drafts you review and send yourself. Nothing is posted or sent automatically." />
+            <CardBody>
+              <OutreachPanel
+                leadId={lead.id}
+                businessName={b.name}
+                canEdit={canEdit}
+                suppressed={suppressed}
+                aiProvider={ai?.id ?? null}
+                smtp={{ ready: !!smtp, source: smtp?.source ?? null, from: smtp?.smtp.from ?? null, dailyLimit: smtp?.dailyLimit ?? 0, sentToday, postalAddressMissing: !!smtp && !smtp.postalAddress }}
+                emails={data.contacts.filter((c) => c.type === "email").map((c) => c.normalizedValue.toLowerCase())}
+                linkedinUrl={data.contacts.find((c) => c.type === "linkedin")?.value ?? null}
+                defaultLanguage={wsRow[0]?.settings.draftLanguage ?? "English"}
+                drafts={data.drafts.map((d) => ({ id: d.id, kind: d.kind, subject: d.subject, body: d.body, providerId: d.providerId, model: d.model, createdAgo: fmtRelative(d.createdAt), usedAt: d.usedAt?.toISOString() ?? null }))}
+                sent={data.sentEmails.map((m) => ({ id: m.id, toEmail: m.toEmail, subject: m.subject, status: m.status, sentAgo: fmtRelative(m.sentAt), unsubscribedAt: m.unsubscribedAt?.toISOString() ?? null, error: m.error }))}
+                actions={{ generate: generateDraftAction, newManual: newManualDraftAction, save: saveDraftAction, markUsed: markDraftUsedAction, send: sendOutreachEmailAction, remove: deleteDraftAction }}
+              />
             </CardBody>
           </Card>
 

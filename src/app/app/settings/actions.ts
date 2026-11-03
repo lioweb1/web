@@ -53,6 +53,29 @@ export const updateWorkspaceAction = action(
   },
 );
 
+/* Outreach profile: who AI drafts are written as. Stored in workspace settings; only used to build prompts. */
+export const updateOutreachProfileAction = action(
+  {
+    schema: z.object({
+      senderName: z.string().trim().max(80),
+      senderRole: z.string().trim().max(80),
+      pitch: z.string().trim().max(400),
+      bookingUrl: z.string().trim().max(300).refine((u) => !u || /^https:\/\//.test(u), "Use an https:// link"),
+      draftLanguage: z.string().trim().max(40),
+    }),
+    role: "admin",
+    audit: "workspace.outreach_profile",
+  },
+  async (ctx, i) => {
+    const [ws] = await systemDb().select().from(schema.workspaces).where(eq(schema.workspaces.id, ctx.workspace.id));
+    await systemDb()
+      .update(schema.workspaces)
+      .set({ settings: { ...ws.settings, senderName: i.senderName, senderRole: i.senderRole, pitch: i.pitch, bookingUrl: i.bookingUrl, draftLanguage: i.draftLanguage || "English" }, updatedAt: new Date() })
+      .where(eq(schema.workspaces.id, ctx.workspace.id));
+    return done("workspace", "Outreach profile saved. New drafts will use it.");
+  },
+);
+
 export const createWorkspaceAction = action({ schema: z.object({ name: z.string().trim().min(1).max(100) }), audit: "workspace.create" }, async (ctx, i) => {
   const ws = await createWorkspace(ctx.user.id, i.name);
   (await cookies()).set("lo_ws", ws.id, { httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production", path: "/" });

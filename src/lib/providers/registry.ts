@@ -6,6 +6,8 @@ import { hackerNewsProvider } from "./hackernews";
 import { rssProvider } from "./rss";
 import { rdapProvider } from "./rdap";
 import { websiteAnalyzerProvider, pagespeedProvider, dnsEmailProvider, hubspotProvider, linkedinProvider, facebookProvider } from "./others";
+import { geminiProvider, groqProvider } from "./ai";
+import { outreachEmailProvider } from "./outreach-email";
 
 export const PROVIDERS: ProviderDefinition[] = [
   osmProvider,
@@ -18,6 +20,9 @@ export const PROVIDERS: ProviderDefinition[] = [
   pagespeedProvider,
   dnsEmailProvider,
   hubspotProvider,
+  geminiProvider,
+  groqProvider,
+  outreachEmailProvider,
   linkedinProvider,
   facebookProvider,
 ];

@@ -3,7 +3,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { action } from "@/lib/action";
 import { getProvider } from "@/lib/providers/registry";
-import { saveIntegration, testIntegration } from "@/lib/services/integrations";
+import { saveIntegration, testIntegration, hasConnectionTest } from "@/lib/services/integrations";
 import { audit } from "@/lib/services/audit";
 
 const schema = z.object({ providerId: z.string().min(1).max(64), enabled: z.string().optional() }).catchall(z.union([z.string(), z.array(z.string())]));
@@ -33,7 +33,7 @@ export const saveIntegrationAction = action({ schema, role: "admin" }, async (ct
 
 export const testIntegrationAction = action({ schema: z.object({ providerId: z.string().min(1).max(64) }), role: "admin" }, async (ctx, input) => {
   const def = getProvider(input.providerId);
-  if (!def?.test) return { error: "This source has no connection test." };
+  if (!def || !hasConnectionTest(def)) return { error: "This source has no connection test." };
   const res = await testIntegration(ctx.workspace.id, def.id);
   await audit({ workspaceId: ctx.workspace.id, userId: ctx.user.id, action: "integration.test", targetType: "integration", targetId: def.id, metadata: { ok: res.ok } });
   revalidatePath("/app/integrations");

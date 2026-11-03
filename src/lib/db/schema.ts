@@ -124,6 +124,15 @@ export type WorkspaceSettings = {
   targetIndustries?: string[];
   /** Services the workspace offers (shown in recommendations). */
   services?: string[];
+  /** Outreach profile: who messages are written as. Used only to draft text; never sent anywhere else. */
+  senderName?: string;
+  senderRole?: string;
+  /** One or two sentences describing what you offer and for whom. */
+  pitch?: string;
+  /** Optional booking / calendar link to include in drafts. */
+  bookingUrl?: string;
+  /** Default language for AI drafts, e.g. "English", "Bengali", "German". */
+  draftLanguage?: string;
 };
 
 export const memberships = pgTable(
@@ -511,6 +520,96 @@ export const tasks = pgTable(
     ...timestamps,
   },
   (t) => [index("tasks_ws_due_idx").on(t.workspaceId, t.dueAt)],
+);
+
+/* ------------------------------------------------------------------ */
+/* Outreach: AI drafts, sent emails, unsubscribe suppressions           */
+/* ------------------------------------------------------------------ */
+
+/** linkedin_comment | linkedin_message | email | follow_up_email */
+export const draftKind = pgEnum("draft_kind", ["linkedin_comment", "linkedin_message", "email", "follow_up_email"]);
+export const outreachStatus = pgEnum("outreach_status", ["sent", "failed"]);
+
+/**
+ * Message text written by an AI provider (or edited by a user) for one lead.
+ * LinkedIn drafts are copied and posted manually by the user; LeadOrbit never
+ * posts, likes or messages on LinkedIn on anyone's behalf.
+ */
+export const outreachDrafts = pgTable(
+  "outreach_drafts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    leadId: uuid("lead_id")
+      .notNull()
+      .references(() => leads.id, { onDelete: "cascade" }),
+    createdById: uuid("created_by_id").references(() => users.id, { onDelete: "set null" }),
+    kind: draftKind("kind").notNull(),
+    subject: text("subject"),
+    body: text("body").notNull(),
+    /** gemini | groq | manual */
+    providerId: text("provider_id").notNull(),
+    model: text("model"),
+    language: text("language"),
+    tone: text("tone"),
+    /** Set when the user marks the draft as sent/posted (LinkedIn) or it was emailed. */
+    usedAt: timestamp("used_at", { withTimezone: true }),
+    ...timestamps,
+  },
+  (t) => [index("drafts_lead_idx").on(t.leadId, t.createdAt), index("drafts_ws_idx").on(t.workspaceId, t.createdAt)],
+);
+
+/** One-to-one outreach emails sent from the app over the workspace's own SMTP account. */
+export const outreachMessages = pgTable(
+  "outreach_messages",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    leadId: uuid("lead_id")
+      .notNull()
+      .references(() => leads.id, { onDelete: "cascade" }),
+    draftId: uuid("draft_id").references(() => outreachDrafts.id, { onDelete: "set null" }),
+    sentById: uuid("sent_by_id").references(() => users.id, { onDelete: "set null" }),
+    toEmail: text("to_email").notNull(),
+    fromEmail: text("from_email").notNull(),
+    subject: text("subject").notNull(),
+    body: text("body").notNull(),
+    status: outreachStatus("status").notNull(),
+    error: text("error"),
+    /** Message-ID returned by the SMTP server. */
+    messageId: text("message_id"),
+    /** Opaque token in the unsubscribe link of this message. */
+    unsubscribeToken: text("unsubscribe_token").notNull(),
+    unsubscribedAt: timestamp("unsubscribed_at", { withTimezone: true }),
+    sentAt: timestamp("sent_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("outreach_unsub_token_uq").on(t.unsubscribeToken),
+    index("outreach_ws_sent_idx").on(t.workspaceId, t.sentAt),
+    index("outreach_lead_idx").on(t.leadId, t.sentAt),
+  ],
+);
+
+/** Addresses that must never receive outreach from this workspace again. */
+export const emailSuppressions = pgTable(
+  "email_suppressions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    email: text("email").notNull(),
+    /** unsubscribed | bounced | manual */
+    reason: text("reason").notNull(),
+    leadId: uuid("lead_id").references(() => leads.id, { onDelete: "set null" }),
+    note: text("note"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("suppressions_ws_email_uq").on(t.workspaceId, t.email)],
 );
 
 /* ------------------------------------------------------------------ */

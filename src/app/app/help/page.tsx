@@ -14,6 +14,7 @@ const SECTIONS = [
   ["monitoring", "Monitoring & schedules"],
   ["notifications", "Notifications & email"],
   ["webhooks", "Webhooks & CRM"],
+  ["outreach", "Outreach: AI drafts, LinkedIn & email"],
   ["privacy", "Privacy & opt-out requests"],
   ["shortcuts", "Keyboard shortcuts"],
 ] as const;
@@ -165,6 +166,30 @@ export default function HelpPage() {
   .update(req.headers["x-leadorbit-timestamp"] + "." + rawBody).digest("hex");
 if (!crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(req.headers["x-leadorbit-signature"]))) reject();`}</pre>
             <p>HubSpot’s free CRM is supported directly (Data sources → HubSpot); other CRMs can be connected through webhooks and free automation tools like n8n.</p>
+          </Section>
+
+          <Section id="outreach" title="Outreach: AI drafts, LinkedIn & email">
+            <p>
+              Every lead has an <strong>Outreach</strong> section. It turns the evidence LeadOrbit already stores (location, website issues, technologies, opportunities) plus your <Link className="text-accent hover:underline" href="/app/settings?tab=workspace">outreach profile</Link> into a short draft: a LinkedIn comment, a LinkedIn message, a cold email or a follow-up email. You read it, fix anything that is not accurate, and send it yourself.
+            </p>
+            <h3>Free AI assistants</h3>
+            <ul>
+              <li><strong>Google Gemini</strong> — create a key at aistudio.google.com (no card), paste it under Data sources → Google Gemini. The free tier has daily request limits; the default model can be changed.</li>
+              <li><strong>Groq</strong> — console.groq.com → API Keys. Used when Gemini is not enabled.</li>
+              <li>The AI only receives the facts shown on the lead and your profile. It is instructed to invent nothing, mention at most two observations, avoid pressure tactics and stay under a word limit. Always check the text: language models can still be wrong.</li>
+            </ul>
+            <h3>LinkedIn</h3>
+            <p>
+              LinkedIn does not permit third-party tools to post, like, comment or message on members&apos; behalf, and automation gets accounts restricted. So LeadOrbit deliberately stops at the text: <em>Copy</em> the draft, post or send it in your own LinkedIn tab, then click <em>Mark as posted / sent</em>. That logs the interaction in the timeline, moves the lead to Contacted and sets the follow-up reminder you chose. If a company page was found on the business&apos;s website it is linked; otherwise the button opens a LinkedIn company search.
+            </p>
+            <h3>Email from your own account</h3>
+            <ul>
+              <li>Configure <Link className="text-accent hover:underline" href="/app/integrations#outreach_email">Data sources → Outreach email</Link>. Gmail: enable 2-step verification, create an <em>app password</em>, host smtp.gmail.com, port 587, user = your address (about 500 emails/day). Resend: host smtp.resend.com, port 465, user <code className="font-mono text-xs">resend</code>, password = API key, from = an address on a domain you verified (3,000 emails/month free).</li>
+              <li>Emails can only go to addresses the business published itself (the Contacts list on the lead). Your signature, postal address and an unsubscribe link are appended; the message also carries <code className="font-mono text-xs">List-Unsubscribe</code> headers so mail clients show their own unsubscribe button.</li>
+              <li>Anyone who unsubscribes is added to the workspace&apos;s do-not-contact list and can never be emailed again from LeadOrbit. The <Link className="text-accent hover:underline" href="/app/outreach">Outreach</Link> page shows the list, sent emails, drafts and due follow-ups.</li>
+              <li>A daily cap (default 50) protects your sender reputation; new email accounts should warm up slowly. There is no bulk send on purpose: one business, one email, written for them.</li>
+              <li>You are the sender and responsible for complying with the anti-spam law that applies to you and the recipient (CAN-SPAM, GDPR/PECR, CASL and others). Keep it to business addresses, be honest about who you are, and stop when asked.</li>
+            </ul>
           </Section>
 
           <Section id="privacy" title="Privacy & opt-out requests">

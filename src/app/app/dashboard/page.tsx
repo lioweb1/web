@@ -11,6 +11,7 @@ import { TrendLine } from "@/components/charts/charts";
 import { getKpis, getAnalytics, parseRange } from "@/lib/queries/analytics";
 import { getDashboardSide, getTargetMarkets } from "@/lib/queries/dashboard";
 import { countryName } from "@/lib/countries";
+import { dueFollowUps } from "@/lib/services/outreach";
 
 export const metadata = { title: "Dashboard" };
 
@@ -19,7 +20,8 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
   const sp = await searchParams;
   const range = parseRange(sp);
   const ws = ctx.workspace.id;
-  const [kpis, analytics, side, markets] = await Promise.all([getKpis(ws, range), getAnalytics(ws, range), getDashboardSide(ws, ctx.user.id), getTargetMarkets(ws)]);
+  const [kpis, analytics, side, markets, followUps] = await Promise.all([getKpis(ws, range), getAnalytics(ws, range), getDashboardSide(ws, ctx.user.id), getTargetMarkets(ws), dueFollowUps(ws, 7, 8)]);
+  const overdue = followUps.filter((f) => f.followUpAt && f.followUpAt.getTime() < Date.now()).length;
   const qs = new URLSearchParams({ range: range.preset, ...(range.countries.length ? { country: range.countries.join(",") } : {}) }).toString();
   const leadsHref = (extra: string) => `/app/leads?${range.countries.length ? `country=${range.countries.join(",")}&` : ""}${extra}`;
   const fromStr = range.from.toISOString().slice(0, 10);
@@ -93,24 +95,47 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
           </CardBody>
         </Card>
 
-        <Card>
-          <CardHeader title="Recent notifications" action={<Link href="/app/notifications" className="text-xs text-accent hover:underline">View all</Link>} />
-          {side.notifications.length ? (
-            <ul className="divide-y divide-border">
-              {side.notifications.map((n) => (
-                <li key={n.id}>
-                  <Link href={n.leadId ? `/app/leads/${n.leadId}` : "/app/notifications"} className="block px-4 py-2.5 hover:bg-surface-2/50">
-                    <p className="line-clamp-1 text-sm font-medium">{n.title}</p>
-                    {n.body ? <p className="line-clamp-1 text-xs text-muted">{n.body}</p> : null}
-                    <p className="text-[11px] text-subtle">{fmtRelative(n.createdAt)}</p>
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <EmptyState title="No notifications" description="Monitoring rules notify you when they find qualifying businesses." />
-          )}
-        </Card>
+        <div className="space-y-6">
+          <Card>
+            <CardHeader title="Follow-ups due" description={overdue ? `${overdue} overdue` : "Next 7 days"} action={<Link href="/app/outreach" className="text-xs text-accent hover:underline">Outreach</Link>} />
+            {followUps.length ? (
+              <ul className="divide-y divide-border">
+                {followUps.map((f) => (
+                  <li key={f.id}>
+                    <Link href={`/app/leads/${f.id}#outreach`} className="flex items-center justify-between gap-2 px-4 py-2.5 hover:bg-surface-2/50">
+                      <span className="min-w-0">
+                        <span className="line-clamp-1 text-sm font-medium">{f.name}</span>
+                        <span className="block text-xs text-muted">{[f.city, f.countryCode ? countryName(f.countryCode) : null].filter(Boolean).join(", ")}</span>
+                      </span>
+                      <span className={`shrink-0 text-xs ${f.followUpAt && f.followUpAt.getTime() < Date.now() ? "text-danger" : "text-muted"}`}>{f.followUpAt ? fmtRelative(f.followUpAt) : ""}</span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <EmptyState title="Nothing due" description="Log outreach on a lead with a follow-up date and it shows up here." className="py-8" />
+            )}
+          </Card>
+
+          <Card>
+            <CardHeader title="Recent notifications" action={<Link href="/app/notifications" className="text-xs text-accent hover:underline">View all</Link>} />
+            {side.notifications.length ? (
+              <ul className="divide-y divide-border">
+                {side.notifications.map((n) => (
+                  <li key={n.id}>
+                    <Link href={n.leadId ? `/app/leads/${n.leadId}` : "/app/notifications"} className="block px-4 py-2.5 hover:bg-surface-2/50">
+                      <p className="line-clamp-1 text-sm font-medium">{n.title}</p>
+                      {n.body ? <p className="line-clamp-1 text-xs text-muted">{n.body}</p> : null}
+                      <p className="text-[11px] text-subtle">{fmtRelative(n.createdAt)}</p>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <EmptyState title="No notifications" description="Monitoring rules notify you when they find qualifying businesses." />
+            )}
+          </Card>
+        </div>
 
         <Card className="lg:col-span-3">
           <CardHeader title="Monitoring rules" description="Schedules run on the background worker. Sources that only publish periodically are never shown as real-time." action={<Link href="/app/monitoring" className="text-xs text-accent hover:underline">Manage</Link>} />

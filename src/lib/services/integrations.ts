@@ -3,7 +3,23 @@ import { schema, withTenant, type Tx } from "@/lib/db";
 import { decryptSecret, encryptSecret, maskSecret } from "@/lib/security/crypto";
 import { defaultHttp, type HttpClient } from "@/lib/providers/http";
 import { getProvider } from "@/lib/providers/registry";
-import type { ProviderContext } from "@/lib/providers/types";
+import type { ProviderContext, ProviderDefinition } from "@/lib/providers/types";
+import { smtpConfigFrom } from "@/lib/providers/outreach-email";
+import { verifySmtp } from "@/lib/notifications/email";
+
+/** Connection tests that need Node-only modules and therefore cannot live in the (browser-shared) provider definitions. */
+const SERVER_TESTS: Record<string, NonNullable<ProviderDefinition["test"]>> = {
+  async outreach_email(ctx) {
+    const cfg = smtpConfigFrom(ctx.settings, ctx.secrets);
+    if (!cfg) return { ok: false, message: "Fill in host, user, password and from address first." };
+    await verifySmtp(cfg);
+    return { ok: true, message: `SMTP login to ${cfg.host}:${cfg.port} succeeded` };
+  },
+};
+
+export function hasConnectionTest(provider: ProviderDefinition) {
+  return !!provider.test || (!!provider.serverTest && provider.id in SERVER_TESTS);
+}
 
 export type IntegrationView = {
   providerId: string;
@@ -146,11 +162,12 @@ export async function recordProviderResult(workspaceId: string, providerId: stri
 /** Run the provider's live connection test. Only a passing test marks an integration "connected". */
 export async function testIntegration(workspaceId: string, providerId: string) {
   const provider = getProvider(providerId);
-  if (!provider?.test) throw new Error("This integration has no connection test");
+  const test = provider?.test ?? (provider?.serverTest ? SERVER_TESTS[provider.id] : undefined);
+  if (!provider || !test) throw new Error("This integration has no connection test");
   const ctx = await providerContext(workspaceId, providerId);
   let outcome: { ok: boolean; message: string; remainingQuota?: number | null };
   try {
-    outcome = await provider.test(ctx);
+    outcome = await test(ctx);
   } catch (e) {
     outcome = { ok: false, message: e instanceof Error ? e.message : String(e) };
   }

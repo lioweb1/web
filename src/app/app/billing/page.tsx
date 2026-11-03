@@ -12,7 +12,7 @@ import { sql } from "drizzle-orm";
 
 export const metadata = { title: "Usage & plan" };
 
-const METERED: LimitKey[] = ["discoveryRunsPerMonth", "websiteAnalysesPerMonth", "exportRowsPerMonth"];
+const METERED: LimitKey[] = ["discoveryRunsPerMonth", "websiteAnalysesPerMonth", "exportRowsPerMonth", "aiDraftsPerMonth", "outreachEmailsPerMonth"];
 
 export default async function BillingPage() {
   const ctx = await requireAuth();
@@ -34,6 +34,8 @@ export default async function BillingPage() {
     discoveryRunsPerMonth: usage.discoveryRunsPerMonth ?? 0,
     websiteAnalysesPerMonth: usage.websiteAnalysesPerMonth ?? 0,
     exportRowsPerMonth: usage.exportRowsPerMonth ?? 0,
+    aiDraftsPerMonth: usage.aiDraftsPerMonth ?? 0,
+    outreachEmailsPerMonth: usage.outreachEmailsPerMonth ?? 0,
   };
   const overrides = workspace.limitOverrides as Partial<Record<LimitKey, number>>;
   const isOwner = hasRole(ctx, "owner");

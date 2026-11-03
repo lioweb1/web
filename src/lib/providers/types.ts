@@ -82,9 +82,11 @@ export type ProviderCategory =
   | "social"
   | "email_verification"
   | "crm"
-  | "news_feeds";
+  | "news_feeds"
+  | "ai_assistant"
+  | "email_sending";
 
-export type FieldDef = { key: string; label: string; type: "secret" | "text" | "textarea" | "checkbox"; help?: string; required?: boolean };
+export type FieldDef = { key: string; label: string; type: "secret" | "text" | "textarea" | "checkbox"; help?: string; required?: boolean; placeholder?: string };
 
 export type ProviderDefinition = {
   id: string;
@@ -114,5 +116,7 @@ export type ProviderDefinition = {
   /** Criteria fields this source can use, for the UI. */
   criteriaSupport?: (keyof RuleCriteria)[];
   test?: (ctx: ProviderContext) => Promise<{ ok: boolean; message: string; remainingQuota?: number | null }>;
+  /** The connection test is implemented server-side (services/integrations.ts) because it needs Node-only modules. */
+  serverTest?: boolean;
   discover?: (ctx: ProviderContext, criteria: RuleCriteria) => Promise<DiscoveryResult>;
 };

@@ -1,7 +1,7 @@
 import { ExternalLink } from "lucide-react";
 import { requireAuth, hasRole } from "@/lib/auth/session";
 import { PROVIDERS } from "@/lib/providers/registry";
-import { listIntegrations } from "@/lib/services/integrations";
+import { listIntegrations, hasConnectionTest } from "@/lib/services/integrations";
 import { PageHeader, Card, CardBody } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Notice } from "@/components/ui/states";
@@ -23,6 +23,8 @@ const CATEGORY: Record<string, string> = {
   email_verification: "Email verification",
   crm: "CRM",
   news_feeds: "News & feeds",
+  ai_assistant: "AI writing assistant",
+  email_sending: "Outreach email",
 };
 
 export default async function IntegrationsPage() {
@@ -111,7 +113,7 @@ export default async function IntegrationsPage() {
                       settings={Object.fromEntries(Object.entries(row?.settings ?? {}).map(([k, v]) => [k, String(v ?? "")]))}
                       masked={row?.maskedSecrets ?? {}}
                       canEdit={canEdit}
-                      hasTest={!!p.test}
+                      hasTest={hasConnectionTest(p)}
                     />
                   </div>
                 ) : null}

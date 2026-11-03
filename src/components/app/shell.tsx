@@ -3,7 +3,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
-  LayoutDashboard, Radar, Users, Globe, ScanSearch, Megaphone, BellRing, Bookmark, BarChart3, PlugZap, Download, Settings, CreditCard, LifeBuoy, PanelLeftClose, PanelLeftOpen, Menu, X, Activity,
+  LayoutDashboard, Radar, Users, Globe, ScanSearch, Megaphone, BellRing, Bookmark, BarChart3, PlugZap, Download, Settings, CreditCard, LifeBuoy, PanelLeftClose, PanelLeftOpen, Menu, X, Activity, Send,
 } from "lucide-react";
 import { cn } from "@/components/ui/cn";
 import { Logo } from "./logo";
@@ -13,6 +13,7 @@ const NAV = [
     { href: "/app/dashboard", label: "Dashboard", icon: LayoutDashboard },
     { href: "/app/discover", label: "Discover", icon: Radar },
     { href: "/app/leads", label: "Leads", icon: Users },
+    { href: "/app/outreach", label: "Outreach", icon: Send },
     { href: "/app/signals", label: "Business signals", icon: Megaphone },
   ] },
   { section: "Intelligence", items: [

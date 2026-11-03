@@ -2,7 +2,7 @@ import { and, desc, eq } from "drizzle-orm";
 import { requireAuth, hasRole } from "@/lib/auth/session";
 import { schema, systemDb, withTenant } from "@/lib/db";
 import { PageHeader, Card, CardHeader, CardBody } from "@/components/ui/card";
-import { Input, Select, Field, Checkbox } from "@/components/ui/input";
+import { Input, Select, Textarea, Field, Checkbox } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { EmptyState, Notice } from "@/components/ui/states";
@@ -13,7 +13,7 @@ import { ConfirmAction } from "@/components/ui/confirm-action";
 import { CountrySelector } from "@/components/ui/country-selector";
 import { REGIONS, countryName, flag } from "@/lib/countries";
 import {
-  updateProfileAction, changePasswordAction, updateWorkspaceAction, createWorkspaceAction, addMemberAction, setRoleAction, removeMemberAction,
+  updateProfileAction, changePasswordAction, updateWorkspaceAction, updateOutreachProfileAction, createWorkspaceAction, addMemberAction, setRoleAction, removeMemberAction,
   saveMarketAction, deleteMarketAction, setDefaultMarketAction, restorePremiumAction, createWebhookAction, toggleWebhookAction, deleteWebhookAction,
   deleteWorkspaceAction, deleteAccountAction,
 } from "./actions";
@@ -112,6 +112,30 @@ async function WorkspaceTab() {
               </Field>
             </fieldset>
             {!canEdit ? <p className="text-xs text-muted">Only admins can change workspace settings.</p> : null}
+          </ActionForm>
+        </CardBody>
+      </Card>
+      <Card className="lg:col-span-2">
+        <CardHeader title="Outreach profile" description="Used only to write AI drafts of LinkedIn comments, messages and emails in your voice. The AI sees these fields plus the facts stored on a lead, nothing else." />
+        <CardBody>
+          <ActionForm action={updateOutreachProfileAction}>
+            <fieldset disabled={!canEdit} className="grid gap-4 sm:grid-cols-2">
+              <Field label="Your name (sign-off)" htmlFor="op-name" hint="Defaults to the signed-in user's name when empty.">
+                <Input id="op-name" name="senderName" defaultValue={ws.settings.senderName ?? ""} maxLength={80} />
+              </Field>
+              <Field label="Your role" htmlFor="op-role" hint="e.g. Web designer, Founder">
+                <Input id="op-role" name="senderRole" defaultValue={ws.settings.senderRole ?? ""} maxLength={80} />
+              </Field>
+              <Field label="What you offer, in one or two sentences" htmlFor="op-pitch" className="sm:col-span-2" hint="Plain and honest. The AI is told not to add claims beyond this.">
+                <Textarea id="op-pitch" name="pitch" defaultValue={ws.settings.pitch ?? ""} maxLength={400} className="min-h-16" placeholder="I build fast, mobile-friendly websites for local service businesses, usually live within two weeks." />
+              </Field>
+              <Field label="Booking link (optional)" htmlFor="op-booking" hint="Calendly, Cal.com, Google Calendar appointment page…">
+                <Input id="op-booking" name="bookingUrl" defaultValue={ws.settings.bookingUrl ?? ""} maxLength={300} placeholder="https://cal.com/you/intro" />
+              </Field>
+              <Field label="Default draft language" htmlFor="op-lang" hint="Can be changed per draft.">
+                <Input id="op-lang" name="draftLanguage" defaultValue={ws.settings.draftLanguage ?? "English"} maxLength={40} />
+              </Field>
+            </fieldset>
           </ActionForm>
         </CardBody>
       </Card>

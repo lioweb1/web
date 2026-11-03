@@ -23,6 +23,7 @@ Lead discovery, website and domain intelligence, explainable lead scoring and a 
 | Search | Keyword search plus about 30 filters, sorting, pagination, saved searches, search history, quick filters, bulk tag and export, and saving a search as a monitoring rule. |
 | Notifications | In-app notification center and bell, browser notifications (with your permission), and email (immediate or daily digest) over your SMTP server. Per-type toggles, minimum score, country filters, quiet hours, and duplicate prevention. Every notification links to its lead and source. |
 | Automation | Signed webhooks (work with Zapier, Make or n8n), push to HubSpot's free CRM, auto-tagging, lists, follow-up reminders, and scheduled discovery. |
+| Outreach | Per-lead **AI drafts** (LinkedIn comment, LinkedIn message, cold email, follow-up email) written by Google Gemini or Groq free tiers from the stored evidence and your outreach profile; a copy-and-mark-as-posted workflow for LinkedIn (LeadOrbit never posts for you); **one-to-one emails from your own SMTP account** (Gmail app password or Resend, both free) to published business addresses only, with signature, postal address, unsubscribe link and `List-Unsubscribe` headers; automatic do-not-contact list; daily sending cap; an Outreach page with due follow-ups, drafts, sent emails and suppressions. |
 | Analytics | KPIs and charts computed from stored data only, with empty states when there is no data. |
 | Security | scrypt password hashing, httpOnly session cookies with hashed tokens, PostgreSQL RLS on every workspace table, AES-256-GCM encrypted API keys (never sent to the browser), DB-backed rate limiting, zod validation, SSRF protection on every outbound fetch of user-supplied URLs, audit logs, data export and deletion, and opt-out suppression. |
 
@@ -40,7 +41,10 @@ Lead discovery, website and domain intelligence, explainable lead scoring and a 
 | **DNS email checks** (built-in) | No | Syntax and MX checks. |
 | **Google PageSpeed Insights** | Optional free key | Lighthouse scores. Off by default because each test takes 10–30 s. |
 | **HubSpot free CRM** | Free private-app token | Push qualified leads as Companies. |
-| LinkedIn / Facebook | — | **Not available.** Their APIs don't allow third-party monitoring of other companies' posts or pages, and scraping is prohibited. Company page links are still collected from businesses' own websites and map listings. |
+| **Google Gemini** | Free key | AI drafts of outreach text. Free tier, no card. Prompts contain only the lead's stored facts and your profile. |
+| **Groq** | Free key | Alternative AI drafts (open models). Free tier, no card. |
+| **Your SMTP account** | Free (Gmail app password / Resend) | Sends outreach emails. Any SMTP server works. |
+| LinkedIn / Facebook | — | **Not available for automation.** Their APIs don't allow third-party monitoring of other companies' posts or pages, and scraping, auto-liking, auto-commenting or auto-messaging are prohibited and get accounts banned. LeadOrbit drafts the text; you post it. Company page links are still collected from businesses' own websites and map listings. |
 
 **Coverage is limited to what these sources expose.** The app never claims global coverage, real-time updates or purchase intent.
 
@@ -88,6 +92,15 @@ Register at `/register`. Your workspace starts with the Premium Markets target. 
 
 Keys are encrypted with `APP_ENCRYPTION_KEY` before they are stored. Changing that key makes stored keys unreadable, so re-enter them if you do.
 
+### Outreach (optional, free)
+
+1. **AI drafts:** create a Gemini API key at <https://aistudio.google.com/> (or a Groq key at <https://console.groq.com/>), paste it in *Data sources → Google Gemini / Groq*, click *Test connection*.
+2. **Outreach profile:** *Settings → Workspace → Outreach profile*: your name, role, a one-sentence pitch, optional booking link, default language.
+3. **Email account:** *Data sources → Outreach email*. Gmail: `smtp.gmail.com`, port 587, user = your Gmail address, password = an [app password](https://support.google.com/accounts/answer/185833) (requires 2-step verification), from = your Gmail address. Resend: `smtp.resend.com`, port 465, user `resend`, password = API key, from = an address on a domain verified in Resend. Fill in your postal address (required by anti-spam law) and a signature. Without this, the server-wide `SMTP_*` settings are used if present.
+4. On any lead, open **Outreach**: generate a draft, edit it, then *Copy* + *Mark as posted* for LinkedIn or *Send email* for email. Both log the interaction and set a follow-up reminder. The **Outreach** page lists due follow-ups, drafts, sent emails and the do-not-contact list.
+
+Deliberate limits: no bulk sending, recipients must be addresses the business published itself, unsubscribes are enforced forever per workspace, and nothing is ever posted to LinkedIn by the app.
+
 ### Email alerts (optional, free)
 
 Set the `SMTP_*` variables. Any SMTP server works, for example a Gmail account with an app password (`smtp.gmail.com:587`) or a free tier of a transactional email service. Without SMTP, in-app and browser notifications still work.
@@ -104,7 +117,7 @@ Set the `SMTP_*` variables. Any SMTP server works, for example a Gmail account w
 | `APP_URL` | yes | Public URL, used in emails and webhooks. |
 | `PROVIDER_CONTACT_EMAIL` | recommended | Added to the User-Agent. Required by the OpenStreetMap / Nominatim usage policy. |
 | `OVERPASS_API_URL`, `NOMINATIM_API_URL` | no | Point to self-hosted instances for heavy use. |
-| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM` | no | Email notifications. |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM` | no | Email notifications, and the fallback account for outreach emails when a workspace has not configured its own. |
 | `CRON_SECRET` | no | Protects `POST /api/cron/tick` when you use an external cron instead of the worker. |
 
 ---
@@ -126,7 +139,7 @@ src/
     scoring/              explainable score
     jobs/                 queue (SKIP LOCKED), handlers, scheduler, runner
     notifications/        notify(), email
-    services/             leads/CRM, enrichment, integrations, monitoring, accounts, audit, CRM push
+    services/             leads/CRM, enrichment, integrations, monitoring, accounts, audit, CRM push, outreach (AI drafts, email, unsubscribe)
 src/worker/index.ts       long-running worker
 drizzle/                  SQL migrations (0001 = row-level security policies)
 tests/                    Vitest integration tests against a real PostgreSQL
@@ -175,3 +188,5 @@ The tests run against a real PostgreSQL. Provider responses are replayed from re
 - Hacker News and RSS signals often have no location, so country targeting can't apply to them.
 - crt.sh can be slow at peak times, so keep keywords specific.
 - No payment integration is connected. Plans and limits are configurable fair-use guards.
+- AI drafts are first drafts. The prompt forbids invented facts, but language models can still be wrong; read before you send.
+- LinkedIn posting, liking, commenting and messaging cannot be automated with permitted access, so they are not. The app prepares text and keeps the log; you do the clicking.

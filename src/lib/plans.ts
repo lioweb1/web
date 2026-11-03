@@ -2,7 +2,7 @@ import { sql } from "drizzle-orm";
 import { systemDb, schema } from "@/lib/db";
 
 export type Plan = "free" | "pro" | "agency";
-export type LimitKey = "savedLeads" | "discoveryRunsPerMonth" | "exportRowsPerMonth" | "monitoringRules" | "websiteAnalysesPerMonth" | "members";
+export type LimitKey = "savedLeads" | "discoveryRunsPerMonth" | "exportRowsPerMonth" | "monitoringRules" | "websiteAnalysesPerMonth" | "members" | "aiDraftsPerMonth" | "outreachEmailsPerMonth";
 
 /**
  * Plan limits. All data sources used are free, so these limits exist to protect
@@ -11,9 +11,9 @@ export type LimitKey = "savedLeads" | "discoveryRunsPerMonth" | "exportRowsPerMo
  * A value of -1 means no app-level limit.
  */
 export const PLAN_LIMITS: Record<Plan, Record<LimitKey, number>> = {
-  free: { savedLeads: 2000, discoveryRunsPerMonth: 300, exportRowsPerMonth: 10000, monitoringRules: 10, websiteAnalysesPerMonth: 1500, members: 3 },
-  pro: { savedLeads: 25000, discoveryRunsPerMonth: 3000, exportRowsPerMonth: 100000, monitoringRules: 50, websiteAnalysesPerMonth: 15000, members: 10 },
-  agency: { savedLeads: -1, discoveryRunsPerMonth: -1, exportRowsPerMonth: -1, monitoringRules: -1, websiteAnalysesPerMonth: -1, members: -1 },
+  free: { savedLeads: 2000, discoveryRunsPerMonth: 300, exportRowsPerMonth: 10000, monitoringRules: 10, websiteAnalysesPerMonth: 1500, members: 3, aiDraftsPerMonth: 600, outreachEmailsPerMonth: 1500 },
+  pro: { savedLeads: 25000, discoveryRunsPerMonth: 3000, exportRowsPerMonth: 100000, monitoringRules: 50, websiteAnalysesPerMonth: 15000, members: 10, aiDraftsPerMonth: 6000, outreachEmailsPerMonth: 15000 },
+  agency: { savedLeads: -1, discoveryRunsPerMonth: -1, exportRowsPerMonth: -1, monitoringRules: -1, websiteAnalysesPerMonth: -1, members: -1, aiDraftsPerMonth: -1, outreachEmailsPerMonth: -1 },
 };
 
 export const PLAN_FEATURES: Record<Plan, string[]> = {
@@ -29,6 +29,8 @@ export const LIMIT_LABELS: Record<LimitKey, string> = {
   monitoringRules: "Monitoring rules",
   websiteAnalysesPerMonth: "Website analyses / month",
   members: "Workspace members",
+  aiDraftsPerMonth: "AI drafts / month",
+  outreachEmailsPerMonth: "Outreach emails / month",
 };
 
 export class LimitExceededError extends Error {

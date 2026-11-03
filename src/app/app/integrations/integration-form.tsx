@@ -4,7 +4,7 @@ import { Input, Textarea, Checkbox, Field } from "@/components/ui/input";
 import { SubmitButton, FormMessage } from "@/components/ui/form";
 import { saveIntegrationAction, testIntegrationAction } from "./actions";
 
-export type FieldView = { key: string; label: string; type: "secret" | "text" | "textarea" | "checkbox"; help?: string; required?: boolean };
+export type FieldView = { key: string; label: string; type: "secret" | "text" | "textarea" | "checkbox"; help?: string; required?: boolean; placeholder?: string };
 
 export function IntegrationForm({
   providerId,
@@ -45,9 +45,9 @@ export function IntegrationForm({
             ) : (
               <Field key={f.key} label={`${f.label}${f.required ? " *" : ""}`} htmlFor={`${providerId}-s-${f.key}`} hint={f.help}>
                 {f.type === "textarea" ? (
-                  <Textarea id={`${providerId}-s-${f.key}`} name={`setting_${f.key}`} defaultValue={settings[f.key] ?? ""} rows={4} />
+                  <Textarea id={`${providerId}-s-${f.key}`} name={`setting_${f.key}`} defaultValue={settings[f.key] ?? ""} rows={4} placeholder={f.placeholder} />
                 ) : (
-                  <Input id={`${providerId}-s-${f.key}`} name={`setting_${f.key}`} defaultValue={settings[f.key] ?? ""} />
+                  <Input id={`${providerId}-s-${f.key}`} name={`setting_${f.key}`} defaultValue={settings[f.key] ?? ""} placeholder={f.placeholder} />
                 )}
               </Field>
             ),
