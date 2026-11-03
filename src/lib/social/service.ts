@@ -13,6 +13,8 @@ import { fetchTrends, TREND_SOURCES } from "./trends";
 import { cardImageUrl } from "./image";
 import { isValidTimeZone, nextSlot, parseTimes } from "./schedule";
 import { sendPostForApproval } from "./telegram-notify";
+import { attachMedia, mediaBytes, mediaInfo, mediaUrl } from "./media";
+import type { MediaRef } from "./publish";
 
 export const DEFAULT_CONFIG: SocialAutopilotConfig = {
   keywords: [],
@@ -49,7 +51,7 @@ let resolverOverride: Resolver | null = null;
 export function setSocialResolverForTests(r: Resolver | null) {
   resolverOverride = r;
 }
-export const deps = () => ({ http: httpClient(), resolve: resolverOverride ?? defaultResolver });
+export const deps = (workspaceId?: string) => ({ http: httpClient(), resolve: resolverOverride ?? defaultResolver, ...(workspaceId ? { loadMedia: (id: string) => mediaBytes(workspaceId, id) } : {}) });
 
 export type Post = typeof schema.socialPosts.$inferSelect;
 const LOCKED = ["queued", "publishing", "published"];
@@ -347,8 +349,8 @@ export async function deletePost(workspaceId: string, postId: string) {
   await withTenant(workspaceId, (tx) => tx.delete(schema.socialPosts).where(and(eq(schema.socialPosts.id, postId), eq(schema.socialPosts.workspaceId, workspaceId))));
 }
 
-/** Content for one post as publishers see it (image card, UTM, thread mode resolved). */
-export function postContent(p: Post, cfg: SocialAutopilotConfig, hook = p.hook): PostContent {
+/** Content for one post as publishers see it (images, link, UTM, thread mode resolved). */
+export function postContent(p: Post, cfg: SocialAutopilotConfig, hook = p.hook, media: MediaRef[] = []): PostContent {
   return {
     hook,
     body: p.body,
@@ -356,12 +358,18 @@ export function postContent(p: Post, cfg: SocialAutopilotConfig, hook = p.hook):
     platformTexts: p.platformTexts,
     thread: p.thread,
     hashtags: p.hashtags,
-    imageUrl: p.imageUrl ?? (cfg.autoImage && p.autoImage ? cardImageUrl(p.id, { absolute: true, version: p.updatedAt }) : null),
+    imageUrl: p.imageUrl ?? (!media.length && cfg.autoImage && p.autoImage ? cardImageUrl(p.id, { absolute: true, version: p.updatedAt }) : null),
     altText: p.altText,
-    link: cfg.link,
+    link: p.link ?? cfg.link,
     utm: cfg.utm,
-    threadMode: cfg.threadMode,
+    // Composer posts keep all of their text: long content continues as a thread on short platforms.
+    threadMode: cfg.threadMode || p.sourceId === "composer",
+    media,
   };
+}
+
+async function mediaRefs(workspaceId: string, p: Post): Promise<MediaRef[]> {
+  return (await mediaInfo(workspaceId, p.mediaIds)).map((m) => ({ id: m.id, url: mediaUrl(m.id, { absolute: true }), width: m.width, height: m.height, alt: m.altText }));
 }
 
 /**
@@ -379,6 +387,7 @@ export async function publishPost(workspaceId: string, postId: string, opts: { f
   const variants = p.hookVariants.length ? p.hookVariants : [p.hook];
   const chosen = Math.max(0, variants.indexOf(p.hook));
   const results: Record<string, SocialPublishResult> = { ...p.results };
+  const media = await mediaRefs(workspaceId, p);
   let retryable = false;
   for (const [i, platform] of p.platforms.entries()) {
     if (results[platform]?.ok) continue;
@@ -395,7 +404,7 @@ export async function publishPost(workspaceId: string, postId: string, opts: { f
       continue;
     }
     try {
-      const out = await PUBLISHERS[platform](deps(), conn, postContent(p, config, variants[hookIndex]));
+      const out = await PUBLISHERS[platform](deps(workspaceId), conn, postContent(p, config, variants[hookIndex], media));
       results[platform] = { ok: true, id: out.id, cid: out.cid ?? null, url: out.url, at, hookIndex };
       await recordConnectionStatus(workspaceId, def, { ok: true, message: "ok" });
     } catch (e) {
@@ -476,4 +485,112 @@ export async function testConnection(workspaceId: string, def: SocialConnectionD
   }
   await recordConnectionStatus(workspaceId, def, outcome, { test: true });
   return outcome;
+}
+
+/* ------------------------------------------------------------------ */
+/* Composer: the user's own title / description / content / images      */
+/* ------------------------------------------------------------------ */
+
+export type ComposerInput = { title: string; description: string; content: string; link: string | null; hashtags: string[]; mediaIds: string[]; alts: string[]; platforms: string[] };
+
+const SHORT_TEXT = 170;
+
+/** Split text into parts of at most `max` characters, preferring paragraph and sentence breaks. */
+export function splitForThread(text: string, max = 280): string[] {
+  const parts: string[] = [];
+  let cur = "";
+  const pieces = text
+    .split(/\n{2,}/)
+    .flatMap((para) => (Array.from(para).length <= max ? [para] : para.match(/[^.!?।]+[.!?।]+["')\]]*\s*|[^.!?।]+$/g) ?? [para]))
+    .map((x) => x.trim())
+    .filter(Boolean);
+  for (const piece of pieces) {
+    const words = Array.from(piece).length <= max ? [piece] : piece.split(/\s+/);
+    for (const w of words) {
+      const next = cur ? `${cur}${words.length > 1 ? " " : "\n\n"}${w}` : w;
+      if (Array.from(next).length <= max) cur = next;
+      else {
+        if (cur) parts.push(cur);
+        cur = Array.from(w).length <= max ? w : Array.from(w).slice(0, max - 1).join("") + "…";
+      }
+    }
+  }
+  if (cur) parts.push(cur);
+  return parts;
+}
+
+/**
+ * Build a post from the user's own text without rewriting it: title becomes the headline,
+ * description + content the body, and short platforms get the description with the rest of
+ * the content continued as a thread.
+ */
+export function composerFields(input: Pick<ComposerInput, "title" | "description" | "content" | "link">) {
+  const title = input.title.trim();
+  const description = input.description.trim();
+  const content = input.content.trim();
+  const cta = input.link ? `\n\n👉 ${LINK_TOKEN_TEXT}` : "";
+  const body = [description, content].filter(Boolean).join("\n\n") + cta;
+  const lead = description || content;
+  const shortLead = Array.from(lead).length <= SHORT_TEXT ? lead : `${Array.from(lead).slice(0, SHORT_TEXT - 1).join("").trimEnd()}…`;
+  const shortBody = (shortLead + cta).trim() || title;
+  const rest = description && content ? content : Array.from(lead).length > SHORT_TEXT ? lead : "";
+  return { hook: title, body: body.trim() || title, shortBody, thread: rest ? splitForThread(rest).slice(0, 10) : [] };
+}
+const LINK_TOKEN_TEXT = "{LINK}";
+
+/** Create a post from the composer and attach its images. */
+export async function createComposerPost(workspaceId: string, input: ComposerInput) {
+  if (!input.title.trim()) throw new SocialConfigError("Add a title");
+  if (!input.platforms.length) throw new SocialConfigError("Choose at least one platform");
+  if (input.platforms.some((x) => !SOCIAL_PLATFORMS.some((s) => s.id === x))) throw new SocialConfigError("Unknown platform");
+  if (input.link && !/^https?:\/\/\S+$/.test(input.link)) throw new SocialConfigError("Link must start with http:// or https://");
+  const f = composerFields(input);
+  const [post] = await withTenant(workspaceId, (tx) =>
+    tx
+      .insert(schema.socialPosts)
+      .values({
+        workspaceId,
+        sourceId: "composer",
+        sourceTitle: input.title.slice(0, 500),
+        ...f,
+        hookVariants: [f.hook],
+        hashtags: input.hashtags.map((h) => h.replace(/^#/, "").replace(/\s+/g, "")).filter(Boolean).slice(0, 10),
+        link: input.link,
+        altText: input.alts[0]?.trim() || null,
+        autoImage: input.mediaIds.length === 0,
+        platforms: input.platforms,
+        status: "draft",
+      })
+      .returning(),
+  );
+  try {
+    await attachMedia(workspaceId, post.id, input.mediaIds, input.alts);
+  } catch (e) {
+    await withTenant(workspaceId, (tx) => tx.delete(schema.socialPosts).where(eq(schema.socialPosts.id, post.id)));
+    throw new SocialConfigError(e instanceof Error ? e.message : String(e));
+  }
+  return getPost(workspaceId, post.id);
+}
+
+/**
+ * Publish right away in this request so the user sees links immediately. Platforms that fail
+ * with a temporary error are retried by a background job; nothing that succeeded is reposted.
+ */
+export async function publishNow(workspaceId: string, postId: string) {
+  const p = await getPost(workspaceId, postId);
+  if (!p.platforms.length) throw new SocialConfigError("Choose at least one platform for this post");
+  if (p.status === "publishing" || p.status === "published") throw new SocialConfigError("This post is already published or being published");
+  await cancelQueuedJobs(postId);
+  const now = new Date();
+  await withTenant(workspaceId, (tx) => tx.update(schema.socialPosts).set({ status: "queued", scheduledAt: now, updatedAt: now }).where(eq(schema.socialPosts.id, postId)));
+  let retrying = false;
+  try {
+    await publishPost(workspaceId, postId, { now });
+  } catch (e) {
+    if (!(e instanceof SocialConfigError)) {
+      retrying = true;
+      await enqueue({ type: "social_publish", workspaceId, payload: { postId }, runAt: new Date(Date.now() + 60_000), idempotencyKey: `social:${postId}:retry:${Date.now()}`, maxAttempts: 3 });
+    }
+  }
+  return { post: await getPost(workspaceId, postId), retrying };
 }

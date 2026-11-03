@@ -5,6 +5,7 @@ import { getLimits, getUsage, LIMIT_LABELS, type LimitKey } from "@/lib/plans";
 import { notify } from "@/lib/notifications/notify";
 import { emailDeliveryAvailable } from "@/lib/notifications/email";
 import { getProvider } from "@/lib/providers/registry";
+import { cleanupOrphanMedia } from "@/lib/social/media";
 
 type Rule = typeof schema.monitoringRules.$inferSelect;
 
@@ -111,6 +112,7 @@ export async function schedulerTick(now = new Date()) {
 
   // Usage warnings at 80% of monthly limits (once per metric per month).
   if (now.getMinutes() < 5 || process.env.NODE_ENV === "test") {
+    await cleanupOrphanMedia();
     const wss = await db.select({ id: schema.workspaces.id }).from(schema.workspaces);
     for (const ws of wss) {
       const [limits, usage] = await Promise.all([getLimits(ws.id), getUsage(ws.id)]);

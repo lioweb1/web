@@ -16,9 +16,18 @@ export type PostContent = {
   link: string;
   utm?: boolean;
   threadMode?: boolean;
+  /** Uploaded images (in order). When set, they replace `imageUrl`. */
+  media?: MediaRef[];
 };
+export type MediaRef = { id: string; url: string; width: number; height: number; alt?: string | null };
 export type PublishOutcome = { id: string | null; url: string | null; cid?: string | null };
-export type PublishDeps = { http: HttpClient; resolve: Resolver };
+export type PublishDeps = { http: HttpClient; resolve: Resolver; loadMedia?: (id: string) => Promise<{ data: Buffer; mime: string }> };
+
+/** Image URLs to post: uploads first, otherwise the single image (own or generated card). */
+export function imagesOf(c: PostContent, max = 10): { url: string; alt: string | null; ref?: MediaRef }[] {
+  if (c.media?.length) return c.media.slice(0, max).map((m) => ({ url: m.url, alt: m.alt ?? c.altText ?? null, ref: m }));
+  return c.imageUrl ? [{ url: c.imageUrl, alt: c.altText ?? null }] : [];
+}
 
 const GRAPH = () => `https://graph.facebook.com/${process.env.META_GRAPH_VERSION ?? "v23.0"}`;
 const THREADS = "https://graph.threads.net/v1.0";
@@ -128,8 +137,9 @@ export function blueskyFacets(text: string) {
 
 type StrongRef = { uri: string; cid: string };
 
-async function blueskyPost(http: HttpClient, s: Awaited<ReturnType<typeof blueskySession>>, text: string, reply?: { root: StrongRef; parent: StrongRef }) {
+async function blueskyPost(http: HttpClient, s: Awaited<ReturnType<typeof blueskySession>>, text: string, reply?: { root: StrongRef; parent: StrongRef }, embed?: unknown) {
   const record: Record<string, unknown> = { $type: "app.bsky.feed.post", text, createdAt: new Date().toISOString() };
+  if (embed) record.embed = embed;
   const facets = blueskyFacets(text);
   if (facets.length) record.facets = facets;
   if (reply) record.reply = reply;
@@ -148,17 +158,28 @@ async function threadsPublish(http: HttpClient, token: string, data: Record<stri
   return graphPost<{ id: string }>(http, `${THREADS}/me/threads_publish`, { creation_id: container.id, access_token: token }, "Threads");
 }
 
-async function mastodonFetch(d: PublishDeps, conn: Connection, path: string, init: { method?: "GET" | "POST"; body?: Record<string, string> } = {}) {
+async function mastodonFetch(d: PublishDeps, conn: Connection, path: string, init: { method?: "GET" | "POST"; body?: Record<string, string>; raw?: { body: string | Uint8Array<ArrayBuffer>; contentType: string }; timeoutMs?: number } = {}) {
   const base = conn.settings.instanceUrl.replace(/\/+$/, "");
   if (!/^https:\/\//.test(base)) throw new ProviderHttpError("Mastodon instance URL must start with https://", 400, false);
+  const body = init.raw?.body ?? (init.body ? form(init.body) : undefined);
+  const contentType = init.raw?.contentType ?? (init.body ? "application/x-www-form-urlencoded" : undefined);
   const res = await safeFetch(d.http, d.resolve, `${base}${path}`, {
     method: init.method ?? "GET",
-    headers: { Authorization: `Bearer ${conn.secrets.accessToken}`, ...(init.body ? { "Content-Type": "application/x-www-form-urlencoded" } : {}) },
-    body: init.body ? form(init.body) : undefined,
-    timeoutMs: 20_000,
+    headers: { Authorization: `Bearer ${conn.secrets.accessToken}`, ...(contentType ? { "Content-Type": contentType } : {}) },
+    body,
+    timeoutMs: init.timeoutMs ?? 20_000,
   });
   assertOk(res, "Mastodon");
   return res;
+}
+
+/** Minimal multipart/form-data encoder for one file plus text fields. */
+export function multipart(fields: Record<string, string>, file: { name: string; filename: string; type: string; data: Buffer }) {
+  const boundary = `----leadorbit${Math.random().toString(16).slice(2)}`;
+  const parts: Buffer[] = [];
+  for (const [k, v] of Object.entries(fields)) parts.push(Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="${k}"\r\n\r\n${v}\r\n`));
+  parts.push(Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="${file.name}"; filename="${file.filename}"\r\nContent-Type: ${file.type}\r\n\r\n`), file.data, Buffer.from(`\r\n--${boundary}--\r\n`));
+  return { body: new Uint8Array(Buffer.concat(parts)) as Uint8Array<ArrayBuffer>, contentType: `multipart/form-data; boundary=${boundary}` };
 }
 
 export async function telegramCall<T>(http: HttpClient, token: string, method: string, payload: Record<string, unknown>) {
@@ -175,21 +196,37 @@ export const PUBLISHERS: Record<string, Publisher> = {
     const text = composeText("facebook", c);
     const token = conn.secrets.accessToken;
     const page = encodeURIComponent(conn.settings.pageId);
-    if (c.imageUrl) {
-      const r = await graphPost<{ id: string; post_id?: string }>(d.http, `${GRAPH()}/${page}/photos`, { url: c.imageUrl, caption: text, access_token: token }, "Facebook");
+    const images = imagesOf(c);
+    if (images.length === 1) {
+      const r = await graphPost<{ id: string; post_id?: string }>(d.http, `${GRAPH()}/${page}/photos`, { url: images[0].url, caption: text, access_token: token }, "Facebook");
       return { id: r.post_id ?? r.id, url: `https://www.facebook.com/${r.post_id ?? r.id}` };
     }
+    const attached: Record<string, string> = {};
+    // Several photos: upload each unpublished, then attach them all to one feed post.
+    for (const [i, img] of images.entries()) {
+      const r = await graphPost<{ id: string }>(d.http, `${GRAPH()}/${page}/photos`, { url: img.url, published: "false", access_token: token }, "Facebook");
+      attached[`attached_media[${i}]`] = JSON.stringify({ media_fbid: r.id });
+    }
     const link = c.link ? (c.utm ? withUtm(c.link, "facebook") : c.link) : "";
-    const r = await graphPost<{ id: string }>(d.http, `${GRAPH()}/${page}/feed`, { message: text, ...(link ? { link } : {}), access_token: token }, "Facebook");
+    const r = await graphPost<{ id: string }>(d.http, `${GRAPH()}/${page}/feed`, { message: text, ...(images.length ? attached : link ? { link } : {}), access_token: token }, "Facebook");
     return { id: r.id, url: `https://www.facebook.com/${r.id}` };
   },
 
   async instagram(d, conn, c) {
-    const image = c.imageUrl || conn.settings.defaultImageUrl;
-    if (!image) throw new ProviderHttpError("Instagram needs an image: turn on branded image cards, add an image URL to the post, or set a default image", 400, false);
+    const images = imagesOf(c);
+    if (!images.length && conn.settings.defaultImageUrl) images.push({ url: conn.settings.defaultImageUrl, alt: c.altText ?? null });
+    if (!images.length) throw new ProviderHttpError("Instagram needs an image: upload one, turn on branded image cards, or set a default image", 400, false);
     const user = encodeURIComponent(conn.settings.igUserId);
     const token = conn.secrets.accessToken;
-    const container = await graphPost<{ id: string }>(d.http, `${GRAPH()}/${user}/media`, { image_url: image, caption: composeText("instagram", c), ...(c.altText ? { alt_text: c.altText } : {}), access_token: token }, "Instagram");
+    const caption = composeText("instagram", c);
+    let container: { id: string };
+    if (images.length === 1) {
+      container = await graphPost<{ id: string }>(d.http, `${GRAPH()}/${user}/media`, { image_url: images[0].url, caption, ...(images[0].alt ? { alt_text: images[0].alt } : {}), access_token: token }, "Instagram");
+    } else {
+      const children: string[] = [];
+      for (const img of images) children.push((await graphPost<{ id: string }>(d.http, `${GRAPH()}/${user}/media`, { image_url: img.url, is_carousel_item: "true", ...(img.alt ? { alt_text: img.alt } : {}), access_token: token }, "Instagram")).id);
+      container = await graphPost<{ id: string }>(d.http, `${GRAPH()}/${user}/media`, { media_type: "CAROUSEL", children: children.join(","), caption, access_token: token }, "Instagram");
+    }
     const pub = await graphPost<{ id: string }>(d.http, `${GRAPH()}/${user}/media_publish`, { creation_id: container.id, access_token: token }, "Instagram");
     let url: string | null = null;
     try {
@@ -200,7 +237,17 @@ export const PUBLISHERS: Record<string, Publisher> = {
 
   async threads(d, conn, c) {
     const token = conn.secrets.accessToken;
-    const pub = await threadsPublish(d.http, token, { media_type: c.imageUrl ? "IMAGE" : "TEXT", text: composeText("threads", c), ...(c.imageUrl ? { image_url: c.imageUrl } : {}), ...(c.imageUrl && c.altText ? { alt_text: c.altText } : {}) });
+    const text = composeText("threads", c);
+    const images = imagesOf(c, 20);
+    let pub: { id: string };
+    if (images.length > 1) {
+      const children: string[] = [];
+      for (const img of images) children.push((await graphPost<{ id: string }>(d.http, `${THREADS}/me/threads`, { media_type: "IMAGE", image_url: img.url, is_carousel_item: "true", ...(img.alt ? { alt_text: img.alt } : {}), access_token: token }, "Threads")).id);
+      pub = await threadsPublish(d.http, token, { media_type: "CAROUSEL", children: children.join(","), text });
+    } else {
+      const img = images[0];
+      pub = await threadsPublish(d.http, token, { media_type: img ? "IMAGE" : "TEXT", text, ...(img ? { image_url: img.url } : {}), ...(img?.alt ? { alt_text: img.alt } : {}) });
+    }
     let parent = pub.id;
     for (const part of composeThread("threads", c)) parent = (await threadsPublish(d.http, token, { media_type: "TEXT", text: part, reply_to_id: parent })).id;
     let url: string | null = null;
@@ -212,14 +259,37 @@ export const PUBLISHERS: Record<string, Publisher> = {
 
   async bluesky(d, conn, c) {
     const s = await blueskySession(d.http, conn);
-    const root = await blueskyPost(d.http, s, composeText("bluesky", c));
+    // Uploaded images go up as blobs (max 4). Generated cards are skipped: Bluesky needs the bytes.
+    const uploads = (c.media ?? []).slice(0, 4);
+    let embed: unknown;
+    if (uploads.length && d.loadMedia) {
+      const images = [];
+      for (const m of uploads) {
+        const file = await d.loadMedia(m.id);
+        const res = await d.http(`${s.service}/xrpc/com.atproto.repo.uploadBlob`, { method: "POST", headers: { "Content-Type": file.mime, Authorization: `Bearer ${s.accessJwt}` }, body: new Uint8Array(file.data), timeoutMs: 60_000 });
+        assertOk(res, "Bluesky upload");
+        images.push({ alt: (m.alt ?? c.altText ?? "").slice(0, 1000), image: parseJson<{ blob: unknown }>(res, "Bluesky upload").blob, aspectRatio: { width: m.width, height: m.height } });
+      }
+      embed = { $type: "app.bsky.embed.images", images };
+    }
+    const root = await blueskyPost(d.http, s, composeText("bluesky", c), undefined, embed);
     let parent = root;
     for (const part of composeThread("bluesky", c)) parent = await blueskyPost(d.http, s, part, { root, parent });
     return { id: root.uri, cid: root.cid, url: `https://bsky.app/profile/${s.handle}/post/${root.uri.split("/").pop()}` };
   },
 
   async mastodon(d, conn, c) {
-    const res = await mastodonFetch(d, conn, "/api/v1/statuses", { method: "POST", body: { status: composeText("mastodon", c), visibility: "public" } });
+    const mediaIds: string[] = [];
+    for (const m of (c.media ?? []).slice(0, 4)) {
+      if (!d.loadMedia) break;
+      const file = await d.loadMedia(m.id);
+      const { body, contentType } = multipart({ description: (m.alt ?? c.altText ?? "").slice(0, 1500) }, { name: "file", filename: `${m.id}.jpg`, type: file.mime, data: file.data });
+      const res = await mastodonFetch(d, conn, "/api/v2/media", { method: "POST", raw: { body, contentType }, timeoutMs: 60_000 });
+      mediaIds.push(parseJson<{ id: string }>(res, "Mastodon").id);
+    }
+    const status = new URLSearchParams({ status: composeText("mastodon", c), visibility: "public" });
+    for (const id of mediaIds) status.append("media_ids[]", id);
+    const res = await mastodonFetch(d, conn, "/api/v1/statuses", { method: "POST", raw: { body: status.toString(), contentType: "application/x-www-form-urlencoded" } });
     const r = parseJson<{ id: string; url?: string }>(res, "Mastodon");
     let parent = r.id;
     for (const part of composeThread("mastodon", c)) parent = parseJson<{ id: string }>(await mastodonFetch(d, conn, "/api/v1/statuses", { method: "POST", body: { status: part, visibility: "public", in_reply_to_id: parent } }), "Mastodon").id;
@@ -229,21 +299,32 @@ export const PUBLISHERS: Record<string, Publisher> = {
   async telegram(d, conn, c) {
     if (!conn.settings.chatId) throw new ProviderHttpError("Set the Telegram channel to post to", 400, false);
     const text = composeText("telegram", c);
-    const r =
-      c.imageUrl && len(text) <= 1024
-        ? await telegramCall<{ message_id: number }>(d.http, conn.secrets.botToken, "sendPhoto", { chat_id: conn.settings.chatId, photo: c.imageUrl, caption: text })
-        : await telegramCall<{ message_id: number }>(d.http, conn.secrets.botToken, "sendMessage", { chat_id: conn.settings.chatId, text });
+    const images = imagesOf(c);
     const chat = conn.settings.chatId.startsWith("@") ? conn.settings.chatId.slice(1) : null;
-    return { id: String(r.message_id), url: chat ? `https://t.me/${chat}/${r.message_id}` : null };
+    const token = conn.secrets.botToken;
+    const fits = len(text) <= 1024;
+    let firstId: number;
+    if (images.length > 1) {
+      const msgs = await telegramCall<{ message_id: number }[]>(d.http, token, "sendMediaGroup", { chat_id: conn.settings.chatId, media: images.map((img, i) => ({ type: "photo", media: img.url, ...(i === 0 && fits ? { caption: text } : {}) })) });
+      firstId = msgs[0].message_id;
+      if (!fits) await telegramCall(d.http, token, "sendMessage", { chat_id: conn.settings.chatId, text });
+    } else if (images.length === 1) {
+      firstId = (await telegramCall<{ message_id: number }>(d.http, token, "sendPhoto", { chat_id: conn.settings.chatId, photo: images[0].url, ...(fits ? { caption: text } : {}) })).message_id;
+      if (!fits) await telegramCall(d.http, token, "sendMessage", { chat_id: conn.settings.chatId, text });
+    } else firstId = (await telegramCall<{ message_id: number }>(d.http, token, "sendMessage", { chat_id: conn.settings.chatId, text })).message_id;
+    return { id: String(firstId), url: chat ? `https://t.me/${chat}/${firstId}` : null };
   },
 
   async discord(d, conn, c) {
     const hook = conn.secrets.webhookUrl;
     if (!/^https:\/\/(?:canary\.|ptb\.)?discord(?:app)?\.com\/api\/webhooks\//.test(hook ?? "")) throw new ProviderHttpError("Discord webhook URL must be a https://discord.com/api/webhooks/… URL", 400, false);
+    // Embeds that share a url are shown as one gallery.
+    const images = imagesOf(c);
+    const galleryUrl = c.link || "https://discord.com";
     const res = await d.http(`${hook}${hook.includes("?") ? "&" : "?"}wait=true`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ content: composeText("discord", c), ...(c.imageUrl ? { embeds: [{ image: { url: c.imageUrl } }] } : {}) }),
+      body: JSON.stringify({ content: composeText("discord", c), ...(images.length ? { embeds: images.map((img) => ({ url: galleryUrl, image: { url: img.url } })) } : {}) }),
       timeoutMs: 20_000,
     });
     assertOk(res, "Discord");

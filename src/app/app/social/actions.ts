@@ -8,7 +8,7 @@ import { getConnectionDef, saveConnection } from "@/lib/social/accounts";
 import { regenerateReply, sendReply, updateComment } from "@/lib/social/engage";
 import { parseLocalDateTime } from "@/lib/social/schedule";
 import { fmtSlot } from "@/lib/social/format";
-import { deletePost, generateFromText, getAutopilot, queuePublish, regeneratePost, saveAutopilot, setPostStatus, testConnection, unschedulePost, updatePost } from "@/lib/social/service";
+import { createComposerPost, deletePost, generateFromText, getAutopilot, publishNow, queuePublish, regeneratePost, saveAutopilot, setPostStatus, testConnection, unschedulePost, updatePost } from "@/lib/social/service";
 
 const lines = z.preprocess((v) => (typeof v === "string" ? v.split(/[\n,]+/).map((s) => s.trim()).filter(Boolean) : []), z.array(z.string().max(300)));
 const paragraphs = z.preprocess((v) => (typeof v === "string" ? v.split(/\n\s*---\s*\n/).map((s) => s.trim()).filter(Boolean) : []), z.array(z.string().max(500)));
@@ -193,3 +193,37 @@ export const ignoreCommentAction = simpleAction({ schema: z.object({ commentId: 
   await updateComment(ctx.workspace.id, i.commentId, { status: i.restore ? "new" : "ignored" });
   revalidate();
 });
+
+export const composeAction = action(
+  {
+    schema: z.object({
+      title: z.string().trim().min(1, "Add a title").max(300),
+      description: z.string().trim().max(2000).default(""),
+      content: z.string().trim().max(10000).default(""),
+      link: optUrl,
+      hashtags: lines,
+      mediaIds: zArr.pipe(z.array(zUuid).max(10, "Up to 10 images")),
+      alts: zArr,
+      platforms: zArr,
+      when: z.enum(["now", "slot"]).default("now"),
+    }),
+    role: "member",
+  },
+  async (ctx, i) => {
+    const ws = ctx.workspace.id;
+    const post = await createComposerPost(ws, { title: i.title, description: i.description, content: i.content, link: i.link, hashtags: i.hashtags, mediaIds: i.mediaIds, alts: i.alts, platforms: i.platforms });
+    await audit({ workspaceId: ws, userId: ctx.user.id, action: "social.compose", targetType: "social_post", targetId: post.id, metadata: { platforms: i.platforms, images: i.mediaIds.length, when: i.when } });
+    revalidate();
+    if (i.when === "slot") {
+      const { config } = await getAutopilot(ws);
+      const at = await queuePublish(ws, post.id, { when: "slot" });
+      return { message: `Scheduled for ${fmtSlot(at, config.timezone)}.`, data: { postId: post.id, results: {} } };
+    }
+    const { post: done, retrying } = await publishNow(ws, post.id);
+    const ok = done.platforms.filter((p) => done.results[p]?.ok);
+    const failed = done.platforms.filter((p) => !done.results[p]?.ok);
+    const data = { postId: done.id, results: Object.fromEntries(done.platforms.map((p) => [p, { ok: !!done.results[p]?.ok, url: done.results[p]?.url ?? null, error: done.results[p]?.error ?? null }])) };
+    if (!failed.length) return { message: `Published on ${ok.length} platform${ok.length > 1 ? "s" : ""}.`, data };
+    return { error: `${ok.length ? `Published on ${ok.length}, ` : ""}failed on ${failed.length}${retrying ? " — retrying automatically in a minute" : ""}.`, data };
+  },
+);

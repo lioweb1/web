@@ -58,7 +58,7 @@ describe("monitoring rule → discovery → qualification → notification", () 
     http.client; // eslint-friendly
     const original = http.client;
     setHttpClientForTests(async (url, req) => {
-      if (url.includes("hooks.example")) hookCalls.push({ headers: req?.headers ?? {}, body: req?.body ?? "" });
+      if (url.includes("hooks.example")) hookCalls.push({ headers: req?.headers ?? {}, body: typeof req?.body === "string" ? req.body : "" });
       return original(url, req);
     });
     const outbox = captureEmailsForTests(true)!;

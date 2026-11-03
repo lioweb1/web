@@ -7,6 +7,7 @@ import { commentCounts } from "@/lib/social/engage";
 import { composeText, engagementOf } from "@/lib/social/publish";
 import { hookScore } from "@/lib/social/ai";
 import { cardImageUrl } from "@/lib/social/image";
+import { mediaUrl } from "@/lib/social/media";
 import { fmtSlot, platformName } from "@/lib/social/format";
 import { TREND_SOURCES } from "@/lib/social/trends";
 import { Card, CardBody, CardHeader, PageHeader } from "@/components/ui/card";
@@ -32,7 +33,7 @@ const STATUS: Record<string, { label: string; tone: "neutral" | "accent" | "succ
   rejected: { label: "Rejected", tone: "neutral" },
 };
 
-const sourceName = (id: string) => (id === "manual" ? "Your text" : (TREND_SOURCES.find((s) => s.id === id)?.name ?? id));
+const sourceName = (id: string) => (id === "manual" ? "Your text" : id === "composer" ? "Composer" : (TREND_SOURCES.find((s) => s.id === id)?.name ?? id));
 const scoreTone = (s: number) => (s >= 70 ? "success" : s >= 50 ? "warning" : "neutral");
 
 export default async function SocialPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
@@ -55,11 +56,14 @@ export default async function SocialPage({ searchParams }: { searchParams: Promi
         description="Finds trending posts in your niche, has AI write original scroll-stopping, SEO-friendly posts for your brand, publishes them on a schedule through official APIs, and answers comments."
         actions={
           canEdit ? (
-            <form action={runScanNowAction}>
-              <Button type="submit" variant="primary">
-                Scan for trends now
+            <div className="flex gap-2">
+              <form action={runScanNowAction}>
+                <Button type="submit">Scan for trends now</Button>
+              </form>
+              <Button asChild variant="primary">
+                <Link href="/app/social/compose">Compose & publish</Link>
               </Button>
-            </form>
+            </div>
           ) : null
         }
       />
@@ -134,7 +138,7 @@ export default async function SocialPage({ searchParams }: { searchParams: Promi
             const shortPreview = composeText("bluesky", content);
             const kw = [p.primaryKeyword ?? "", ...cfg.keywords];
             const score = hookScore(p.hook, kw);
-            const img = p.imageUrl ?? (cfg.autoImage && p.autoImage ? cardImageUrl(p.id, { version: p.updatedAt }) : null);
+            const img = p.mediaIds[0] ? mediaUrl(p.mediaIds[0]) : (p.imageUrl ?? (cfg.autoImage && p.autoImage ? cardImageUrl(p.id, { version: p.updatedAt }) : null));
             const totalEng = Object.values(p.results).reduce((a, r) => a + engagementOf(r.metrics), 0);
             return (
               <Card key={p.id}>

@@ -13,6 +13,7 @@ import {
   index,
   primaryKey,
   bigint,
+  customType,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 
@@ -839,6 +840,10 @@ export const socialPosts = pgTable(
     metricsUpdatedAt: timestamp("metrics_updated_at", { withTimezone: true }),
     /** Telegram message carrying the approval buttons. */
     approvalMessageId: bigint("approval_message_id", { mode: "number" }),
+    /** Per-post link; overrides the autopilot link when set. */
+    link: text("link"),
+    /** Uploaded images (social_media ids), in order. */
+    mediaIds: uuid("media_ids").array().notNull().default(sql`'{}'::uuid[]`),
     engagementComment: text("engagement_comment"),
     hashtags: text("hashtags").array().notNull().default(sql`'{}'::text[]`),
     imageUrl: text("image_url"),
@@ -885,4 +890,27 @@ export const socialComments = pgTable(
     ...timestamps,
   },
   (t) => [uniqueIndex("social_comments_ext_uq").on(t.workspaceId, t.platform, t.externalId), index("social_comments_ws_idx").on(t.workspaceId, t.status, t.createdAt)],
+);
+
+const bytea = customType<{ data: Buffer; driverData: Buffer }>({ dataType: () => "bytea" });
+
+/** Images uploaded in the composer, stored as processed JPEG and served from a signed URL. */
+export const socialMedia = pgTable(
+  "social_media",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    /** Set once a post uses the image; unattached uploads are cleaned up after a day. */
+    postId: uuid("post_id").references(() => socialPosts.id, { onDelete: "cascade" }),
+    mime: text("mime").notNull(),
+    data: bytea("data").notNull(),
+    width: integer("width").notNull(),
+    height: integer("height").notNull(),
+    size: integer("size").notNull(),
+    altText: text("alt_text"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("social_media_ws_idx").on(t.workspaceId, t.createdAt)],
 );

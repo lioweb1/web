@@ -15,7 +15,7 @@ export type HttpResponse = {
 export type HttpRequest = {
   method?: "GET" | "HEAD" | "POST";
   headers?: Record<string, string>;
-  body?: string;
+  body?: string | Uint8Array<ArrayBuffer>;
   timeoutMs?: number;
   /** Minimum ms between requests to the same host (provider fair-use). */
   minIntervalMs?: number;

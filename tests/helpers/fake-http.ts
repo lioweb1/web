@@ -6,7 +6,7 @@ export type Route = { match: string | RegExp; status?: number; body: string | ob
 export function fakeHttp(routes: Route[]) {
   const calls: { url: string; method: string; body?: string }[] = [];
   const client: HttpClient = async (url, req = {}) => {
-    calls.push({ url, method: req.method ?? "GET", body: req.body });
+    calls.push({ url, method: req.method ?? "GET", body: typeof req.body === "string" || req.body === undefined ? req.body : `[binary ${req.body.length} bytes]` });
     const r = routes.find((x) => (typeof x.match === "string" ? url.includes(x.match) : x.match.test(url)));
     if (!r) throw new Error(`fakeHttp: no route for ${req.method ?? "GET"} ${url}`);
     const text = typeof r.body === "string" ? r.body : JSON.stringify(r.body);
