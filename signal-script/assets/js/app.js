@@ -220,4 +220,63 @@
       document.body.appendChild(b);
     });
   }
+
+  // AI chat widget (Gemini via /api/chat)
+  var fab = document.getElementById('chat-fab'), panel = document.getElementById('chat-panel');
+  if (fab && panel) {
+    var body = document.getElementById('chat-body'), form = document.getElementById('chat-form');
+    var input = form.querySelector('textarea'), left = document.getElementById('chat-left');
+    var suggest = document.getElementById('chat-suggest'), busy = false, KEY = 'chat_log_v1';
+    var esc = function (t) { return t.replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); };
+    var md = function (t) {
+      var h = esc(t);
+      h = h.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>').replace(/(^|[^*])\*([^*\n]+)\*/g, '$1<em>$2</em>').replace(/`([^`]+)`/g, '<code>$1</code>');
+      h = h.replace(/(https?:\/\/[^\s<)]+)/g, '<a href="$1" target="_blank" rel="noopener">$1</a>');
+      h = h.replace(/^\s*[-*•] (.+)$/gm, '<li>$1</li>').replace(/^\s*\d+[.)] (.+)$/gm, '<li>$1</li>');
+      h = h.replace(/(<li>[\s\S]*?<\/li>)(?!\s*<li>)/g, '<ul>$1</ul>').replace(/<\/ul>\s*<ul>/g, '');
+      return h.replace(/\n{2,}/g, '<br><br>').replace(/\n/g, '<br>').replace(/<br>(<\/?(ul|li))/g, '$1').replace(/(<\/(ul|li)>)<br>/g, '$1');
+    };
+    var add = function (role, text, save) {
+      var d = document.createElement('div');
+      d.className = 'msg ' + (role === 'user' ? 'user' : 'bot') + (role === 'error' ? ' err' : '');
+      d.innerHTML = role === 'user' ? esc(text).replace(/\n/g, '<br>') : md(text);
+      body.appendChild(d); body.scrollTop = body.scrollHeight;
+      if (save) { try { var log = JSON.parse(sessionStorage.getItem(KEY) || '[]'); log.push([role, text]); sessionStorage.setItem(KEY, JSON.stringify(log.slice(-30))); } catch (x) {} }
+      return d;
+    };
+    try { JSON.parse(sessionStorage.getItem(KEY) || '[]').forEach(function (m) { add(m[0], m[1], false); }); if (body.children.length > 1) suggest.hidden = true; } catch (x) {}
+    var open = function (v) { panel.hidden = !v; fab.classList.toggle('open', v); if (v) { body.scrollTop = body.scrollHeight; setTimeout(function () { input.focus(); }, 50); } };
+    fab.addEventListener('click', function () { open(panel.hidden); });
+    panel.querySelector('[data-chat-close]').addEventListener('click', function () { open(false); });
+    var post = function (data) {
+      var fd = new FormData(); fd.append('_csrf', APP.csrf);
+      Object.keys(data).forEach(function (k) { fd.append(k, data[k]); });
+      return fetch(APP.base + '/api/chat', { method: 'POST', body: fd, credentials: 'same-origin', headers: { Accept: 'application/json' } }).then(function (r) { return r.json(); });
+    };
+    panel.querySelector('[data-chat-reset]').addEventListener('click', function () {
+      post({ do: 'reset' }).catch(function () {});
+      try { sessionStorage.removeItem(KEY); } catch (x) {}
+      while (body.children.length > 1) body.removeChild(body.lastChild);
+      suggest.hidden = false;
+    });
+    var send = function (text) {
+      text = (text || '').trim();
+      if (!text || busy) return;
+      busy = true; suggest.hidden = true; input.value = ''; input.style.height = '';
+      add('user', text, true);
+      var typing = add('bot', '', false); typing.classList.add('typing'); typing.innerHTML = '<span></span><span></span><span></span>';
+      post({ message: text }).then(function (d) {
+        typing.remove();
+        add(d.ok ? 'bot' : 'error', d.reply || 'Something went wrong.', d.ok);
+        if (left && typeof d.remaining === 'number') left.textContent = d.remaining;
+        if (left && d.limit) left.textContent = '0';
+      }).catch(function () { typing.remove(); add('error', 'Connection problem. Please try again.', false); })
+        .then(function () { busy = false; input.focus(); });
+    };
+    form.addEventListener('submit', function (e) { e.preventDefault(); send(input.value); });
+    input.addEventListener('keydown', function (e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(input.value); } });
+    input.addEventListener('input', function () { input.style.height = 'auto'; input.style.height = Math.min(120, input.scrollHeight) + 'px'; });
+    suggest.querySelectorAll('button').forEach(function (b) { b.addEventListener('click', function () { send(b.textContent); }); });
+    document.querySelectorAll('[data-open-chat]').forEach(function (b) { b.addEventListener('click', function (e) { e.preventDefault(); open(true); }); });
+  }
 })();

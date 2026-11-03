@@ -13,6 +13,7 @@ $navItems = [
     'coupons' => ['🏷️', 'Coupons'],
     'testimonials' => ['💬', 'Testimonials'],
     'faqs' => ['❓', 'FAQ'],
+    'chat' => ['✨', 'AI chat'],
     'backup' => ['💾', 'Backup'],
     'media' => ['🖼️', 'Media'],
     'settings' => ['⚙️', 'Settings'],

@@ -160,6 +160,28 @@ if ($annOn): ?>
 <?php if (!$me): ?>
 <div class="mobile-cta"><a class="btn btn-primary btn-block" href="<?= e(url('register')) ?>">Get free signals →</a></div>
 <?php endif; ?>
+<?php if (chat_enabled()): $chatLimit = chat_limit($me); ?>
+<button class="chat-fab" id="chat-fab" aria-label="Open AI chat"><span class="chat-fab-icon">✨</span><span class="chat-fab-label">Ask AI</span></button>
+<div class="chat-panel" id="chat-panel" hidden role="dialog" aria-label="<?= e(setting('chat_bot_name')) ?>">
+  <div class="chat-head">
+    <div class="chat-avatar">✨</div>
+    <div><strong><?= e(setting('chat_bot_name')) ?></strong><small><span class="dot"></span> Online · powered by Gemini</small></div>
+    <button class="chat-icon" data-chat-reset title="New conversation">↺</button>
+    <button class="chat-icon" data-chat-close title="Close">×</button>
+  </div>
+  <div class="chat-body" id="chat-body">
+    <div class="msg bot"><?= nl2br(e(setting('chat_welcome'))) ?></div>
+  </div>
+  <div class="chat-suggest" id="chat-suggest">
+    <?php foreach (array_slice(lines(setting('chat_suggestions')), 0, 4) as $sg): ?><button type="button"><?= e($sg) ?></button><?php endforeach; ?>
+  </div>
+  <form class="chat-form" id="chat-form">
+    <textarea name="message" rows="1" maxlength="1000" placeholder="Ask anything about trading or signals…" required></textarea>
+    <button class="chat-send" aria-label="Send">➤</button>
+  </form>
+  <div class="chat-foot">AI can make mistakes. Not financial advice.<?php if ($chatLimit > 0): ?> · <span id="chat-left"><?= max(0, $chatLimit - chat_used_today($me)) ?></span> messages left today<?php endif; ?></div>
+</div>
+<?php endif; ?>
 <script>window.APP = {base: <?= json_encode(BASE_URL) ?>, csrf: <?= json_encode(csrf_token()) ?>, pwa: <?= setting('pwa_enabled') === '1' ? 'true' : 'false' ?>};</script>
 <script src="<?= asset('js/app.js') ?>"></script>
 <?php if (setting('custom_js')): ?><script><?= setting('custom_js') ?></script><?php endif; ?>

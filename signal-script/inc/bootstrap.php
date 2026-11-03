@@ -27,6 +27,7 @@ error_reporting(E_ALL);
 
 require APP_ROOT . '/inc/functions.php';
 require APP_ROOT . '/inc/migrate.php';
+require APP_ROOT . '/inc/ai.php';
 
 set_exception_handler(function (Throwable $e) {
     error_log('[signal-script] ' . $e->getMessage() . ' @ ' . $e->getFile() . ':' . $e->getLine());

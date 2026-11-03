@@ -208,3 +208,14 @@ CREATE TABLE IF NOT EXISTS journal (
   UNIQUE KEY user_signal (user_id, signal_id),
   INDEX (user_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS chat_logs (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  user_id INT UNSIGNED NULL,
+  ip VARCHAR(45) NOT NULL,
+  question TEXT NOT NULL,
+  answer MEDIUMTEXT NULL,
+  status VARCHAR(20) NOT NULL DEFAULT 'ok',
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  INDEX (ip, created_at), INDEX (user_id, created_at), INDEX (created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

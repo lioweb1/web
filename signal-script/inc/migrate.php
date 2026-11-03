@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 
 /** Brings an existing database up to the current schema. Safe to run many times. */
 function run_migrations(): void

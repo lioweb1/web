@@ -194,6 +194,17 @@ switch ($route) {
         exit;
 
     case 'api':
+        if (($seg[1] ?? '') === 'chat') {
+            if (!is_post()) json_out(['error' => 'POST only'], 405);
+            if (!chat_enabled()) json_out(['ok' => false, 'reply' => 'The AI assistant is turned off.'], 503);
+            csrf_check();
+            if (($_POST['do'] ?? '') === 'reset') {
+                unset($_SESSION['chat']);
+                json_out(['ok' => true]);
+            }
+            $msg = isset($_POST['message']) && is_string($_POST['message']) ? $_POST['message'] : '';
+            json_out(chat_reply($msg, $user));
+        }
         if (($seg[1] ?? '') === 'signals') {
             $since = (int)($_GET['since'] ?? 0);
             $rows = q("SELECT id, market, asset, direction, is_premium, confidence, created_at FROM signals WHERE id > ? AND status = 'active' ORDER BY id DESC LIMIT 20", [$since])->fetchAll();

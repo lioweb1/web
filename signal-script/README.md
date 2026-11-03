@@ -27,6 +27,7 @@ A self-hosted PHP + MySQL website for publishing binary options, forex and crypt
 | **Social proof** | Admin-managed testimonials and FAQ (with FAQ schema for Google), "How it works" steps, trust row. |
 | **Mobile app (PWA)** | Installable to the home screen, offline fallback, "Install app" button, sticky mobile sign-up bar. |
 | **Admin extras** | 30-day charts (signups, revenue, subscribers, clicks), one-click SQL backup, maintenance mode, premium expiry reminder emails. |
+| **AI chat (Gemini)** | Floating "Ask AI" assistant on every page, powered by a free Google Gemini API key. It answers in the visitor's language (Bangla, Banglish, English…), knows your live signals, results, plans and brokers, and hides premium signals from free users. Daily limits per guest/free/premium, knowledge-base box, chat log and a "Test Gemini" button in admin. |
 | **Security** | `password_hash`, PDO prepared statements, CSRF on every form, login rate-limit, honeypots, safe image uploads (no PHP execution in /uploads), and blocked internal folders. |
 
 ## Requirements
@@ -68,6 +69,19 @@ Then log in at `https://yourdomain.com/login`. Admin users go straight to `/admi
 3. Paste both into Admin → Settings → Payments & referral.
 
 A "Pay with crypto" button then appears on checkout. Premium activates by itself when the payment is confirmed. Manual payments (bKash, Nagad, bank) still work alongside it.
+
+### AI chat assistant (free Gemini API)
+
+1. Go to https://aistudio.google.com/apikey → **Create API key** (free, Google account needed).
+2. Admin → Settings → **AI chat (Gemini)**: paste the key, tick **Enable AI chat assistant** and save.
+3. Admin → **AI chat** → *Test Gemini connection*.
+4. Optional: write your support info, refund policy, Telegram link and offers in **Knowledge base**, then set daily message limits.
+
+Notes:
+- The API key stays on your server. Visitors talk to `/api/chat`, never to Google directly.
+- Free Gemini keys have rate limits (requests per minute and per day). The daily limits per visitor keep you inside them. If the site gets busy, enable billing in Google AI Studio.
+- On Google's free tier, prompts may be used by Google to improve their products, and chat questions plus visitor IPs are stored in your chat log. Mention the AI chat in your Privacy Policy page.
+- The assistant is told never to promise profits and to give educational information only. Still, read the chat log now and then.
 
 ### Updating from an older version
 

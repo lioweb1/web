@@ -370,6 +370,38 @@ switch ($a) {
         if (isset($_GET['json'])) json_out(['files' => $files]);
         admin_render('media', ['title' => 'Media library', 'files' => $files]);
 
+    case 'chat':
+        if (is_post()) {
+            $do = $_POST['do'] ?? '';
+            if ($do === 'test') {
+                if (setting('gemini_api_key') === '') {
+                    flash('error', 'Add your Gemini API key first.');
+                } else {
+                    $r = gemini_generate('You are a test. Reply with one short friendly sentence.', [['role' => 'user', 'text' => 'Say hello and confirm you are working.']]);
+                    flash($r['ok'] ? 'success' : 'error', ($r['ok'] ? '✅ Gemini works: ' : '❌ ') . $r['text'] . ($r['ok'] ? '' : ' (check the API key and model name; details are in the PHP error log)'));
+                }
+            } elseif ($do === 'clear') {
+                q('DELETE FROM chat_logs');
+                flash('success', 'Chat log cleared.');
+            }
+            redirect(admin_url('chat'));
+        }
+        $page = current_page();
+        $total = (int)q_val('SELECT COUNT(*) FROM chat_logs');
+        $since = gmdate('Y-m-d H:i:s', time() - 86400);
+        admin_render('chat', [
+            'title' => 'AI chat',
+            'rows' => q('SELECT c.*, u.email FROM chat_logs c LEFT JOIN users u ON u.id = c.user_id ORDER BY c.id DESC LIMIT 40 OFFSET ' . (($page - 1) * 40))->fetchAll(),
+            'pager' => pagination($total, 40, $page, admin_url('chat')),
+            'stats' => [
+                'today' => (int)q_val("SELECT COUNT(*) FROM chat_logs WHERE created_at > ? AND status = 'ok'", [$since]),
+                'users' => (int)q_val('SELECT COUNT(DISTINCT COALESCE(user_id, ip)) FROM chat_logs WHERE created_at > ?', [$since]),
+                'errors' => (int)q_val("SELECT COUNT(*) FROM chat_logs WHERE created_at > ? AND status = 'error'", [$since]),
+                'total' => $total,
+            ],
+            'series' => daily_series("SELECT DATE(created_at) d, COUNT(*) n FROM chat_logs WHERE created_at >= ? GROUP BY DATE(created_at)"),
+        ]);
+
     case 'backup':
         if (is_post()) {
             @set_time_limit(300);
