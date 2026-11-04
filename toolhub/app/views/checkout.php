@@ -1,6 +1,6 @@
 <a class="back" href="<?= h(url('plans')) ?>">← Plans</a>
 <h1 class="page-title">Checkout: <?= h($package['name']) ?></h1>
-<p class="muted"><?= number_format((int) $package['credits']) ?> credits<?= (int) $package['days'] > 0 ? ' · ' . (int) $package['days'] . ' days' : '' ?></p>
+<p class="muted"><?= number_format((int) $package['credits']) ?> credits<?= (int) $package['days'] > 0 ? ' · ' . (int) $package['days'] . ' days' : '' ?> · <strong><?= money($package['price_usd']) ?> USD</strong></p>
 <?php if ($error): ?><div class="alert alert-error"><?= h($error) ?></div><?php endif; ?>
 <?php if (!$methods): ?>
   <div class="alert alert-error">No payment methods are available right now. Please contact support.</div>
@@ -13,7 +13,7 @@
         <input type="radio" name="method" value="<?= h($m['code']) ?>" <?= $i === 0 ? 'checked' : '' ?> required>
         <span class="method-body">
           <strong><?= h($m['name']) ?></strong>
-          <span class="price-sm"><?= money(order_amount($package, $m['currency']), $m['currency']) ?></span>
+          <span class="price-sm"><?= money(order_amount($package)) ?></span>
           <span class="muted small"><?= $m['kind'] === 'manual' ? 'Manual — verified by our team' : 'Instant — automatic' ?></span>
         </span>
       </label>

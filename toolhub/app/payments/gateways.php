@@ -14,8 +14,6 @@ declare(strict_types=1);
  *    arrive without crediting twice.
  */
 
-require __DIR__ . '/bkash.php';
-require __DIR__ . '/sslcommerz.php';
 require __DIR__ . '/stripe.php';
 require __DIR__ . '/paypal.php';
 require __DIR__ . '/nowpayments.php';
@@ -27,8 +25,6 @@ function gateway_configured(string $code): bool
 {
     $c = (array) config('payments.' . $code, []);
     return match ($code) {
-        'bkash'       => !empty($c['app_key']) && !empty($c['app_secret']) && !empty($c['username']) && !empty($c['password']),
-        'sslcommerz'  => !empty($c['store_id']) && !empty($c['store_password']),
         'stripe'      => !empty($c['secret_key']),
         'paypal'      => !empty($c['client_id']) && !empty($c['secret']),
         'nowpayments' => !empty($c['api_key']) && !empty($c['ipn_secret']),
@@ -41,8 +37,6 @@ function gateway_configured(string $code): bool
 function gateway_start(array $order, array $user): string
 {
     return match ($order['method_code']) {
-        'bkash'       => bkash_start($order, $user),
-        'sslcommerz'  => sslcommerz_start($order, $user),
         'stripe'      => stripe_start($order, $user),
         'paypal'      => paypal_start($order, $user),
         'nowpayments' => nowpayments_start($order, $user),
@@ -58,8 +52,6 @@ function gateway_return(string $code): ?int
         return null;
     }
     return match ($code) {
-        'bkash'       => bkash_return(),
-        'sslcommerz'  => sslcommerz_return(),
         'stripe'      => stripe_return(),
         'paypal'      => paypal_return(),
         'nowpayments' => nowpayments_return(),
@@ -77,7 +69,6 @@ function gateway_webhook(string $code): never
         json_out(['error' => 'not found'], 404);
     }
     match ($code) {
-        'sslcommerz'  => sslcommerz_webhook(),
         'stripe'      => stripe_webhook(),
         'nowpayments' => nowpayments_webhook(),
         'binancepay'  => binancepay_webhook(),

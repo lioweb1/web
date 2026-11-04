@@ -20,7 +20,7 @@
   <section class="card">
     <h2>How to pay</h2>
     <ol class="steps">
-      <li>Send exactly <strong class="big"><?= money($order['amount'], $order['currency']) ?></strong><?= $order['currency'] === 'USD' ? ' (USDT)' : '' ?> to:
+      <li>Send exactly <strong class="big"><?= money($order['amount']) ?></strong><?= in_array($order['method_code'], ['usdt_trc20', 'usdt_bep20', 'binance_manual', 'bybit_manual'], true) ? ' (' . h(number_format((float) $order['amount'], 2)) . ' USDT)' : ' USD' ?> to:
         <pre class="account"><?= h($method['account_details']) ?></pre></li>
       <li><?= nl2br(h($method['instructions'])) ?></li>
       <li>Use reference <code><?= h(invoice_no($order)) ?></code> if the app lets you add a note.</li>
@@ -29,7 +29,7 @@
     <form method="post" class="form">
       <?= csrf_field() ?>
       <label>Your account / number / wallet you paid from<input name="sender" required maxlength="191"></label>
-      <label>Transaction ID (TrxID / TxID / reference)<input name="txid" required minlength="6" maxlength="191"></label>
+      <label>Transaction ID (TxID / hash / transfer number)<input name="txid" required minlength="6" maxlength="191"></label>
       <button class="btn btn-success btn-block" type="submit">I have paid — submit for verification</button>
     </form>
   </section>

@@ -11,7 +11,7 @@ return [
         'name'      => 'ToolHub',
         // Full URL of your site, no trailing slash. Must be https:// in production.
         'base_url'  => 'https://yourdomain.com',
-        'timezone'  => 'Asia/Dhaka',
+        'timezone'  => 'UTC', // e.g. America/New_York, Europe/London, Asia/Dubai
         // People who register/log in with these emails become admins.
         'admin_emails' => ['you@example.com'],
         // Keep false on a live site (true shows PHP errors on screen).
@@ -50,31 +50,19 @@ return [
     'dataforseo' => [
         'login'    => '',
         'password' => '',
-        'location_code' => 2050, // 2050 = Bangladesh, 2840 = United States, 2826 = United Kingdom
+        'location_code' => 2840, // 2840 = United States, 2826 = United Kingdom, 2124 = Canada, 2036 = Australia
         'language_code' => 'en',
     ],
 
     'payments' => [
-        // bKash Tokenized Checkout (merchant account from bKash).
-        'bkash' => [
-            'sandbox'    => true,
-            'app_key'    => '',
-            'app_secret' => '',
-            'username'   => '',
-            'password'   => '',
-        ],
-        // SSLCommerz — cards, Nagad, Rocket, internet banking in Bangladesh.
-        'sslcommerz' => [
-            'sandbox'        => true,
-            'store_id'       => '',
-            'store_password' => '',
-        ],
-        // Stripe — international cards (needs a Stripe account in a supported country).
+        // All payments are charged in US dollars (USD).
+
+        // Stripe — credit/debit cards, Apple Pay, Google Pay (needs a Stripe account in a supported country).
         'stripe' => [
             'secret_key'     => '',   // sk_live_... or sk_test_...
             'webhook_secret' => '',   // whsec_...
         ],
-        // PayPal REST app (developer.paypal.com > Apps & Credentials).
+        // PayPal REST app (developer.paypal.com > Apps & Credentials). PayPal also accepts cards.
         'paypal' => [
             'sandbox'   => true,
             'client_id' => '',

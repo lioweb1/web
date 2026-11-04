@@ -2,9 +2,9 @@
 <div class="pills">
   <?php foreach ($statuses as $s): ?><a class="pill <?= $s === $status ? 'active' : '' ?>" href="<?= h(url('admin/payments', ['status' => $s])) ?>"><?= h(str_replace('_', ' ', ucfirst($s))) ?></a><?php endforeach; ?>
 </div>
-<p class="muted small">⚠️ Before approving a manual payment, open your bKash/Nagad/Binance/Bybit/Wise app and confirm that the TrxID exists and the <strong>exact amount</strong> was received.</p>
+<p class="muted small">⚠️ Before approving a manual payment, open your Binance / Bybit / wallet / Wise account and confirm that the transaction ID exists and the <strong>exact amount</strong> was received.</p>
 <div class="card table-wrap"><table class="table">
-  <thead><tr><th>#</th><th>User</th><th>Package</th><th>Method</th><th class="num">Amount</th><th>Sender / TrxID</th><th>Status</th><th>Date</th><th></th></tr></thead>
+  <thead><tr><th>#</th><th>User</th><th>Package</th><th>Method</th><th class="num">Amount</th><th>Sender / TxID</th><th>Status</th><th>Date</th><th></th></tr></thead>
   <tbody>
   <?php if (!$orders): ?><tr><td colspan="9" class="muted">Nothing here.</td></tr><?php endif; ?>
   <?php foreach ($orders as $o): ?>

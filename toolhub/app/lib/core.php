@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 
-/** Read a config value with dot notation, e.g. config('payments.bkash.app_key'). */
+/** Read a config value with dot notation, e.g. config('payments.stripe.secret_key'). */
 function config(string $key, mixed $default = null): mixed
 {
     $value = $GLOBALS['__config'];
@@ -96,12 +96,10 @@ function redirect(string $to): never
     exit;
 }
 
-function money(float|string $amount, string $currency): string
+/** All prices are in US dollars. */
+function money(float|string $amount, string $currency = 'USD'): string
 {
-    $amount = (float) $amount;
-    return $currency === 'BDT'
-        ? '৳' . number_format($amount, $amount == floor($amount) ? 0 : 2)
-        : '$' . number_format($amount, 2);
+    return '$' . number_format((float) $amount, 2);
 }
 
 function client_ip(): string

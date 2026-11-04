@@ -29,6 +29,7 @@ function admin_setup_checks(): array
     $checks[] = ['Composer packages installed', class_exists(\Anthropic\Client::class), 'Upload the vendor/ folder (see README).'];
     $checks[] = ['Claude API key', config('anthropic.api_key') !== '', 'Add anthropic.api_key in config.php to enable AI tools.'];
     $checks[] = ['Admin email set', !in_array('you@example.com', (array) config('app.admin_emails'), true), 'Put your own email in app.admin_emails.'];
+    $checks[] = ['At least one payment method on', (bool) available_payment_methods(), 'Admin > Payment Methods: add your wallet/account details and switch a method on (or add gateway keys in config.php).'];
     $checks[] = ['Storage folder writable', is_writable(APP_DIR . '/storage'), 'Set permission 755 on app/storage.'];
     $checks[] = ['App folder outside public_html', !str_contains(str_replace('\\', '/', APP_DIR), '/public_html/'), 'Recommended: move the app folder outside public_html (see README).'];
     return $checks;
@@ -181,19 +182,18 @@ function admin_packages(): void
             mb_substr(post('description'), 0, 255),
             max(0, (int) post('credits')),
             max(0, (int) post('days')),
-            max(0, round((float) post('price_bdt'), 2)),
             max(0, round((float) post('price_usd'), 2)),
             isset($_POST['is_featured']) ? 1 : 0,
             isset($_POST['is_active']) ? 1 : 0,
             (int) post('sort'),
         ];
-        if ($data[0] === '' || $data[2] === 0 || ($data[4] <= 0 && $data[5] <= 0)) {
-            flash('error', 'Name, credits and at least one price are required.');
+        if ($data[0] === '' || $data[2] === 0 || $data[4] <= 0) {
+            flash('error', 'Name, credits and a price are required.');
         } elseif ($id) {
-            q('UPDATE packages SET name=?, description=?, credits=?, days=?, price_bdt=?, price_usd=?, is_featured=?, is_active=?, sort=? WHERE id = ?', [...$data, $id]);
+            q('UPDATE packages SET name=?, description=?, credits=?, days=?, price_usd=?, is_featured=?, is_active=?, sort=? WHERE id = ?', [...$data, $id]);
             flash('success', 'Package saved.');
         } else {
-            q('INSERT INTO packages (name, description, credits, days, price_bdt, price_usd, is_featured, is_active, sort) VALUES (?,?,?,?,?,?,?,?,?)', $data);
+            q('INSERT INTO packages (name, description, credits, days, price_usd, is_featured, is_active, sort) VALUES (?,?,?,?,?,?,?,?)', $data);
             flash('success', 'Package created.');
         }
         redirect('admin/packages');

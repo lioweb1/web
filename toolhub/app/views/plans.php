@@ -1,12 +1,11 @@
 <h1 class="page-title">Plans &amp; Credits</h1>
-<p class="muted">A monthly plan unlocks every tool and adds credits. Each tool run uses a few credits. Top-ups add extra credits to an active plan.</p>
+<p class="muted">A monthly plan unlocks every tool and adds credits. Each tool run uses a few credits. Top-ups add extra credits to an active plan. All prices are in US dollars (USD).</p>
 <div class="plan-grid">
   <?php foreach ($packages as $p): ?>
     <div class="plan <?= $p['is_featured'] ? 'featured' : '' ?>">
       <?php if ($p['is_featured']): ?><span class="ribbon-label">Most popular</span><?php endif; ?>
       <h3><?= h($p['name']) ?></h3>
-      <div class="price"><?= money($p['price_bdt'], 'BDT') ?><small><?= (int) $p['days'] > 0 ? ' / ' . (int) $p['days'] . ' days' : ' one-time' ?></small></div>
-      <div class="muted"><?= money($p['price_usd'], 'USD') ?> with international methods</div>
+      <div class="price"><?= money($p['price_usd']) ?><small><?= (int) $p['days'] > 0 ? ' / ' . (int) $p['days'] . ' days' : ' one-time' ?></small></div>
       <ul>
         <li><?= number_format((int) $p['credits']) ?> credits</li>
         <?php if ((int) $p['days'] > 0): ?><li>All tools for <?= (int) $p['days'] ?> days</li><?php else: ?><li>Adds to your current plan</li><?php endif; ?>

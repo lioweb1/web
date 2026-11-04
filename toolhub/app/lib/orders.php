@@ -18,19 +18,20 @@ function available_payment_methods(): array
     return $out;
 }
 
-function order_amount(array $package, string $currency): string
+/** Every order is charged in US dollars (USDT is treated as 1:1 with USD). */
+function order_amount(array $package): string
 {
-    return number_format((float) ($currency === 'BDT' ? $package['price_bdt'] : $package['price_usd']), 2, '.', '');
+    return number_format((float) $package['price_usd'], 2, '.', '');
 }
 
 /** Create a pending order. Price is always taken from the database, never from the browser. */
 function create_order(array $user, array $package, array $method): array
 {
-    $amount = order_amount($package, $method['currency']);
+    $amount = order_amount($package);
     q(
         'INSERT INTO orders (user_id, package_id, package_name, credits, days, method_code, currency, amount, status, created_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, \'pending\', ?)',
-        [$user['id'], $package['id'], $package['name'], $package['credits'], $package['days'], $method['code'], $method['currency'], $amount, now_utc()]
+        [$user['id'], $package['id'], $package['name'], $package['credits'], $package['days'], $method['code'], 'USD', $amount, now_utc()]
     );
     return find_order((int) db()->lastInsertId());
 }
@@ -76,7 +77,7 @@ function fulfill_order(int $orderId, string $paidAmount, string $paidCurrency, ?
         if (!in_array($order['status'], ['pending', 'awaiting_review', 'failed', 'cancelled'], true)) {
             return false;
         }
-        if (strtoupper($paidCurrency) !== $order['currency'] && !($order['currency'] === 'USD' && strtoupper($paidCurrency) === 'USDT')) {
+        if (!in_array(strtoupper($paidCurrency), ['USD', 'USDT'], true)) {
             error_log("Order {$orderId}: currency mismatch {$paidCurrency} vs {$order['currency']}");
             return false;
         }

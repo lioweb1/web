@@ -9,7 +9,7 @@ use Anthropic\Core\Exceptions\RateLimitException;
 
 const TOOL_MAX_INPUT_CHARS = 12000;
 
-const TOOL_LANGUAGES = ['Same as input', 'English', 'Bangla', 'Hindi', 'Urdu', 'Arabic', 'Spanish', 'French', 'German', 'Portuguese', 'Indonesian', 'Malay', 'Turkish', 'Chinese', 'Japanese', 'Korean', 'Russian'];
+const TOOL_LANGUAGES = ['Same as input', 'English', 'Spanish', 'French', 'German', 'Portuguese', 'Italian', 'Dutch', 'Arabic', 'Hindi', 'Bengali', 'Urdu', 'Indonesian', 'Malay', 'Turkish', 'Chinese', 'Japanese', 'Korean', 'Russian'];
 const TOOL_TONES = ['Professional', 'Friendly', 'Casual', 'Persuasive', 'Formal', 'Funny', 'Confident', 'Simple'];
 
 function tool_by_slug(string $slug): ?array
@@ -179,7 +179,7 @@ function dataforseo_keywords(string $seed): array
         ],
         json_encode([[
             'keywords'      => [$seed],
-            'location_code' => (int) config('dataforseo.location_code', 2050),
+            'location_code' => (int) config('dataforseo.location_code', 2840),
             'language_code' => (string) config('dataforseo.language_code', 'en'),
             'sort_by'       => 'search_volume',
         ]]),
